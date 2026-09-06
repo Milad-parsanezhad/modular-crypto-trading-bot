@@ -1,6 +1,12 @@
 import numpy as np
 import pandas as pd
-from research_bot.cross_sectional_v06 import add_cross_sectional_features,run_cross_sectional_experiment,CrossSectionConfig
+from research_bot.cross_sectional_v06 import (
+    _canonical_utc_timestamp,
+    add_cross_sectional_features,
+    run_cross_sectional_experiment,
+    CrossSectionConfig,
+)
+
 
 def synthetic_panel(n_times=800,n_symbols=8,seed=11):
     rng=np.random.default_rng(seed); ts=pd.date_range('2022-01-01',periods=n_times,freq='8h',tz='UTC'); rows=[]
@@ -9,8 +15,22 @@ def synthetic_panel(n_times=800,n_symbols=8,seed=11):
         for i,t in enumerate(ts): rows.append({'timestamp':t,'symbol':f'S{j}USDT','futures_close':close[i],'futures_volume':quote[i]/close[i],'futures_quote_volume':quote[i],'futures_taker_buy_quote':buy[i],'funding_rate':funding[i],'funding_interval_hours':8,'premium_index_close':premium[i]})
     return pd.DataFrame(rows)
 
+
 def test_feature_panel_is_cross_sectional_and_point_in_time_shape():
     x=add_cross_sectional_features(synthetic_panel(100,8)); assert 'cs_funding_rate_pct' in x; assert x.groupby('timestamp').size().min()==8; assert x['future_ret_8h'].notna().sum()>500
 
+
 def test_cross_sectional_experiment_runs():
     panel=synthetic_panel(); cfg=CrossSectionConfig(n_splits=2,top_quantile=.25,one_way_cost_bps=6); summary,pred=run_cross_sectional_experiment(panel,cfg,1); assert not summary.empty; assert set(summary.variant)=={'baseline','funding_premium'}; assert set(summary.model)=={'ridge_logit','hgb'}; assert pred.timestamp.nunique()>100
+
+
+def test_timestamp_canonicalization_prevents_merge_asof_unit_failure():
+    base=pd.date_range('2024-01-01',periods=4,freq='8h',tz='UTC')
+    left=pd.DataFrame({'timestamp':pd.Series(base.astype('datetime64[us, UTC]')),'x':[1,2,3,4]})
+    right=pd.DataFrame({'timestamp':pd.Series(base.astype('datetime64[ms, UTC]')),'y':[10,20,30,40]})
+    assert left.timestamp.dtype != right.timestamp.dtype
+    left['timestamp']=_canonical_utc_timestamp(left.timestamp)
+    right['timestamp']=_canonical_utc_timestamp(right.timestamp)
+    assert left.timestamp.dtype == right.timestamp.dtype
+    merged=pd.merge_asof(left.sort_values('timestamp'),right.sort_values('timestamp'),on='timestamp',direction='backward')
+    assert merged.y.tolist()==[10,20,30,40]
