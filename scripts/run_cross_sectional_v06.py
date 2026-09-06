@@ -28,6 +28,20 @@ def clean(o):
     return o
 
 
+def _filter_regime_comparison(comp: pd.DataFrame, horizon_bars: int, regime: str, variant: str) -> pd.DataFrame:
+    """Fail fast when the regime-engine/report contract changes.
+
+    The regime engine's public comparison schema uses `horizon_bars`; keeping the
+    assertion here prevents a silent empty result or an AttributeError after a
+    long data-ingestion run.
+    """
+    required={'horizon_bars','regime','variant'}
+    missing=required-set(comp.columns)
+    if missing:
+        raise RuntimeError(f'Regime comparison schema mismatch: missing={sorted(missing)} columns={list(comp.columns)}')
+    return comp[(comp['horizon_bars']==horizon_bars)&(comp['regime']==regime)&(comp['variant']==variant)].copy()
+
+
 def independent_oi_confirmation(start_month:str,end_month:str|None,fee_bps:float,slippage_bps:float):
     px,meta=fetch_um_monthly_raw_klines('ETHUSDT','4h',start_month,end_month,True,'klines')
     if px.empty: return {'error':'ETHUSDT kline archive unavailable'}
@@ -44,7 +58,7 @@ def independent_oi_confirmation(start_month:str,end_month:str|None,fee_bps:float
     cfg=RegimeRobustnessConfig(horizons=(1,),n_splits=3,min_train_size=700,fee_bps=fee_bps,slippage_bps=slippage_bps,bootstrap_runs=500,min_regime_obs=40)
     variants={'baseline':['baseline'],'open_interest':['baseline','open_interest']}
     summ,cond,comp,trans,rc,thr,pred,robust=run_regime_horizon_panel(feat,fams,variants,cfg)
-    bear=comp[(comp.horizon==1)&(comp.regime=='bear')&(comp.variant=='open_interest')]
+    bear=_filter_regime_comparison(comp,1,'bear','open_interest')
     return {'asset':'ETHUSDT','frozen_hypothesis':'OI × Bear regime × 4h','summary':summ.to_dict('records'),'bear_incremental_comparison':bear.to_dict('records'),'robustness':robust,'kline_meta':meta,'oi_meta':oimeta,'note':'Independent asset confirmation only; same venue family and frozen methodology as discovery.'}
 
 
