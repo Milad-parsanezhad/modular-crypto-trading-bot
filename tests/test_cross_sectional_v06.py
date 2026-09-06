@@ -4,6 +4,7 @@ import pytest
 
 from research_bot.cross_sectional_v06 import (
     _canonical_utc_timestamp,
+    _portfolio_from_scores,
     add_cross_sectional_features,
     run_cross_sectional_experiment,
     CrossSectionConfig,
@@ -37,6 +38,19 @@ def test_timestamp_canonicalization_prevents_merge_asof_unit_failure():
     assert left.timestamp.dtype == right.timestamp.dtype
     merged=pd.merge_asof(left.sort_values('timestamp'),right.sort_values('timestamp'),on='timestamp',direction='backward')
     assert merged.y.tolist()==[10,20,30,40]
+
+
+def test_24h_portfolio_evaluation_is_non_overlapping_on_8h_clock():
+    ts=pd.date_range('2024-01-01',periods=9,freq='8h',tz='UTC'); rows=[]
+    for t in ts:
+        for j in range(8):
+            rows.append({'timestamp':t,'symbol':f'S{j}','score':float(j),'future_ret_24h':0.001*(j-3.5)})
+    frame=pd.DataFrame(rows)
+    every_bar=_portfolio_from_scores(frame,'score','future_ret_24h',.25,6,rebalance_every=1)
+    non_overlap=_portfolio_from_scores(frame,'score','future_ret_24h',.25,6,rebalance_every=3)
+    assert len(every_bar)==9
+    assert len(non_overlap)==3
+    assert non_overlap.timestamp.tolist()==ts[::3].tolist()
 
 
 def test_regime_comparison_contract_uses_horizon_bars():
