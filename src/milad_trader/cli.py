@@ -19,6 +19,7 @@ def main():
         p.add_argument("--output",required=True)
         if name=="research":
             p.add_argument("--data",required=True)
+            p.add_argument("--resume",action="store_true",help="Reuse verified completed model checkpoints")
         else:
             p.add_argument("--rows",type=int,default=1600)
     p = sub.add_parser("fetch")
@@ -28,6 +29,13 @@ def main():
     p.add_argument("--since",required=True)
     p.add_argument("--until")
     p.add_argument("--output",required=True)
+    p = sub.add_parser("fetch-archive")
+    p.add_argument("--symbol",default="BTC/USDT",choices=["BTC/USDT","ETH/USDT"])
+    p.add_argument("--timeframe",default="4h",choices=["1h","4h"])
+    p.add_argument("--since",required=True)
+    p.add_argument("--until",required=True)
+    p.add_argument("--output",required=True)
+    p.add_argument("--cache-dir",default="data/raw/archive-cache")
     for name in ("paper-step","paper-watch"):
         p=sub.add_parser(name)
         p.add_argument("--bundle",required=True)
@@ -55,9 +63,15 @@ def main():
                 if meta["sha256"] != hashlib.sha256(Path(args.data).read_bytes()).hexdigest():
                     raise ValueError("Dataset checksum mismatch")
             source_kind=meta.get("kind","user_supplied") if meta else "user_supplied_unverified"
-        table=run_experiment(raw,cfg,args.output,source_kind,meta)
+        table=run_experiment(raw,cfg,args.output,source_kind,meta,resume=getattr(args,"resume",False))
         print(table[["fold","model","features","total_return","max_drawdown"]].to_string(index=False))
         print(f"Saved {args.output}; source_kind={source_kind}")
+    elif args.command=="fetch-archive":
+        from .archive import fetch_archive
+        if Path(args.output).exists():
+            raise FileExistsError("Choose a new snapshot filename")
+        raw, metadata = fetch_archive(args.symbol,args.timeframe,args.since,args.until,args.cache_dir)
+        print(json.dumps(save_candles(raw,args.output,metadata),indent=2))
     elif args.command=="fetch":
         if Path(args.output).exists():
             raise FileExistsError("Choose a new snapshot filename")

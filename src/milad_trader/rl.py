@@ -18,8 +18,13 @@ def observation(x, j, lookback, broker, price):
 class TradingEnv(gym.Env):
     metadata = {"render_modes": []}
 
-    def __init__(self, frame, normalized, risk, lookback=24):
+    def __init__(self, frame, normalized, risk, lookback=24, random_start=False, episode_bars=720):
         self.frame, self.x, self.risk, self.lookback = frame,normalized,risk,lookback
+        if len(frame) <= lookback or episode_bars < 1:
+            raise ValueError("Need history and at least one actionable training candle")
+        self.random_start, self.episode_bars = random_start, episode_bars
+        self.episode_end = len(frame)-1
+        self.sampled_starts = []
         self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Box(-np.inf,np.inf,shape=(lookback*normalized.shape[1]+8,),dtype=np.float32)
         self.broker = Broker(risk)
@@ -32,19 +37,24 @@ class TradingEnv(gym.Env):
         super().reset(seed=seed)
         self.broker = Broker(self.risk)
         self.j = self.lookback-1
+        if self.random_start:
+            minimum = min(128, len(self.frame)-self.lookback)
+            self.j = int(self.np_random.integers(self.lookback-1, len(self.frame)-minimum))
+        self.episode_end = min(len(self.frame)-1, self.j+self.episode_bars) if self.random_start else len(self.frame)-1
+        self.sampled_starts.append(self.j)
         return self._obs(), {}
 
     def step(self, action):
         if not self.action_space.contains(action):
             raise ValueError("Invalid action")
-        if self.j >= len(self.frame)-1 or self.broker.halted:
+        if self.j >= self.episode_end or self.broker.halted:
             raise RuntimeError("Episode ended; call reset")
         previous = self.broker.last_equity
         atr = self.frame.atr.iloc[self.j]
         self.j += 1
         self.broker.process(self.frame.index[self.j], self.frame.iloc[self.j],int(action),atr)
         terminated = bool(self.broker.halted)
-        truncated = self.j == len(self.frame)-1
+        truncated = self.j == self.episode_end
         if terminated or truncated:
             self.broker.sell(self.frame.close.iloc[self.j],self.frame.index[self.j],"terminal_liquidation")
             self.broker.last_equity = self.broker.cash
@@ -58,10 +68,13 @@ def fit_ppo(frame, values, train_end, config, seed):
     from .models import seed_everything
     seed_everything(seed)
     scaler = StandardScaler().fit(values[:train_end])
-    env = TradingEnv(frame.iloc[:train_end],scaler.transform(values[:train_end]),config.risk,config.lookback)
+    env = TradingEnv(frame.iloc[:train_end],scaler.transform(values[:train_end]),config.risk,config.lookback,
+                     random_start=True,episode_bars=720)
     agent = PPO("MlpPolicy",env,seed=seed,verbose=0,device="cpu",n_steps=128,batch_size=64,
                 n_epochs=5,learning_rate=3e-4,gamma=.99,policy_kwargs={"net_arch":[32,32]})
     agent.learn(total_timesteps=config.ppo_steps)
+    agent.research_sampling = dict(method="seeded uniform starts inside training only",
+                                   maximum_episode_bars=720, sampled_starts=env.sampled_starts)
     return agent,scaler
 
 

@@ -56,9 +56,9 @@ def buy_and_hold(frame,start,end,risk):
     return curve,fills
 
 
-def run_experiment(raw,config,output,source_kind="user_supplied",source_metadata=None):
+def run_experiment(raw,config,output,source_kind="user_supplied",source_metadata=None,resume=False):
     output = Path(output)
-    output.mkdir(parents=True,exist_ok=False)
+    output.mkdir(parents=True,exist_ok=resume)
     frame = make_features(raw)
     folds = list(walk_forward(len(frame),config))
     target = labels(frame,config.horizon,2*config.risk.fee+2*config.risk.slippage_bps/10000).to_numpy()
@@ -68,8 +68,29 @@ def run_experiment(raw,config,output,source_kind="user_supplied",source_metadata
                     versions=environment_versions(),source_sha256=code_fingerprint(),
                     folds=[asdict(f) for f in folds],status="running",
                     scope="development walk-forward; not an untouched final test")
-    write_json(output/"manifest.json",manifest)
     records,intervals,regimes,costs = [],[],[],[]
+    completed = set()
+    if resume and (output/"manifest.json").exists():
+        previous = json.loads((output/"manifest.json").read_text())
+        for key in ("config","source_kind","data_sha256","source_sha256","versions"):
+            if previous[key] != manifest[key]:
+                raise ValueError(f"Resume mismatch: {key}; choose a new experiment directory")
+        if previous["status"] == "completed":
+            return pd.read_csv(output/"metrics.csv")
+        checkpoint = output/"progress.json"
+        if checkpoint.exists():
+            state = json.loads(checkpoint.read_text())
+            records,intervals,regimes,costs = (state[k] for k in ("records","intervals","regimes","costs"))
+            completed = set(state["completed"])
+    write_json(output/"manifest.json",manifest)
+
+    def checkpoint(name):
+        completed.add(name)
+        temporary = output/"progress.tmp.json"
+        write_json(temporary,dict(records=records,intervals=intervals,regimes=regimes,costs=costs,
+                                 completed=sorted(completed)))
+        temporary.replace(output/"progress.json")
+
     for fold in folds:
         start,end = fold.test
         val_start,val_end = fold.validation
@@ -82,9 +103,12 @@ def run_experiment(raw,config,output,source_kind="user_supplied",source_metadata
             "ichimoku":backtest(frame,frame.apply(ichimoku_signal,axis=1).to_numpy(),config.risk,start,end)
         }
         for name,(curve,fills) in baseline.items():
+            if f"fold{fold.number}_{name}" in completed:
+                continue
             records.append(dict(fold=fold.number,seed=None,model=name,features="rule",threshold=None,
                                 **performance(curve,fills,config.bars_per_year)))
             curve.to_csv(output/f"fold{fold.number}_{name}_equity.csv")
+            checkpoint(f"fold{fold.number}_{name}")
         for seed in config.seeds:
             for include_ichi in ([True,False] if config.ablation else [True]):
                 cols = feature_columns(frame,include_ichi)
@@ -95,6 +119,14 @@ def run_experiment(raw,config,output,source_kind="user_supplied",source_metadata
                 predictions = {}
                 for kind in config.models:
                     name = f"fold{fold.number}_seed{seed}_{kind}_{'ichi' if include_ichi else 'no_ichi'}"
+                    if name in completed:
+                        restored = joblib.load(output/(name+".joblib"))
+                        if kind in ("lstm","xgboost"):
+                            predictor = restored["predictor"]
+                            predictions[kind] = (predictor.predict(values,test_idx),
+                                                 predictor.predict(values,val_idx),restored["threshold"])
+                        print(f"Resumed completed {name}",flush=True)
+                        continue
                     available_after = frame.index[val_end+config.horizon]
                     bundle = dict(kind=kind,config=config.to_dict(),columns=cols,
                                   trained_through=str(available_after),
@@ -107,7 +139,8 @@ def run_experiment(raw,config,output,source_kind="user_supplied",source_metadata
                         agent,scaler = fit_ppo(frame,values,fold.train[1],config,seed)
                         curve,fills = evaluate_ppo(frame,values,start,end,agent,scaler,config)
                         agent.save(output/(name+"_agent"))
-                        bundle.update(agent_file=name+"_agent.zip",scaler=scaler,actual_training_steps=agent.num_timesteps)
+                        bundle.update(agent_file=name+"_agent.zip",scaler=scaler,actual_training_steps=agent.num_timesteps,
+                                      training_sampling=agent.research_sampling)
                     else:
                         predictor = Predictor(kind,config.lookback,seed,config.epochs).fit(values,target,train_idx,val_idx)
                         val_probability = predictor.predict(values,val_idx)
@@ -156,7 +189,11 @@ def run_experiment(raw,config,output,source_kind="user_supplied",source_metadata
                         regimes.append(dict(fold=fold.number,seed=seed,model=kind,ichimoku=include_ichi,
                                             regime=regime,bars=len(r),mean_net_return=float(r.mean()) if len(r) else None))
                     print(f"Completed {name}: return={record['total_return']:.4f}",flush=True)
+                    checkpoint(name)
                 if "lstm" in predictions and "xgboost" in predictions:
+                    ensemble_name = f"fold{fold.number}_seed{seed}_ensemble_{include_ichi}"
+                    if ensemble_name in completed:
+                        continue
                     # Agreement uses each model's independently validation-chosen threshold.
                     a,_,ta = predictions["lstm"]
                     b,_,tb = predictions["xgboost"]
@@ -167,6 +204,7 @@ def run_experiment(raw,config,output,source_kind="user_supplied",source_metadata
                                         features="ichi" if include_ichi else "no_ichi",threshold=None,
                                         **performance(ec,ef,config.bars_per_year)))
                     ec.to_csv(output/f"fold{fold.number}_seed{seed}_ensemble_{include_ichi}_equity.csv")
+                    checkpoint(ensemble_name)
     pd.DataFrame(records).to_csv(output/"metrics.csv",index=False)
     pd.DataFrame(regimes).to_csv(output/"regimes.csv",index=False)
     pd.DataFrame(costs).to_csv(output/"cost_sensitivity.csv",index=False)
