@@ -34,7 +34,10 @@ def independent_oi_confirmation(start_month:str,end_month:str|None,fee_bps:float
     start=px.timestamp.min().date(); end=px.timestamp.max().date()
     oi,oimeta=fetch_um_daily_metrics('ETHUSDT',start,end,max_workers=12,verify_checksum=False)
     frame=pd.DataFrame({'timestamp':px.timestamp,'spot_close':px.close,'futures_close':px.close})
-    if not oi.empty: frame=pd.merge_asof(frame.sort_values('timestamp'),oi.sort_values('timestamp'),on='timestamp',direction='backward')
+    if not oi.empty:
+        frame['timestamp']=pd.to_datetime(frame['timestamp'],utc=True).astype('datetime64[ns, UTC]')
+        oi=oi.copy(); oi['timestamp']=pd.to_datetime(oi['timestamp'],utc=True).astype('datetime64[ns, UTC]')
+        frame=pd.merge_asof(frame.sort_values('timestamp'),oi.sort_values('timestamp'),on='timestamp',direction='backward')
     feat,fams=build_point_in_time_features(frame); feat=add_point_in_time_regimes(feat)
     if not fams.get('open_interest') or feat[fams['open_interest']].notna().any(axis=1).sum()<700:
         return {'error':'insufficient ETHUSDT OI rows','kline_meta':meta,'oi_meta':oimeta}
@@ -50,16 +53,25 @@ def main():
     a=p.parse_args(); out=Path(a.output_dir); out.mkdir(parents=True,exist_ok=True)
     symbols=[s.strip().upper() for s in a.symbols.split(',') if s.strip()]
     panels=[]; archive_meta={}; failures={}
-    def load_symbol(s): return s, build_symbol_panel(s,a.start_month,a.end_month,True)
+
+    def load_symbol(s):
+        try:
+            fr,meta=build_symbol_panel(s,a.start_month,a.end_month,True)
+            return s,fr,meta,None
+        except Exception as exc:
+            return s,pd.DataFrame(),{},f'{type(exc).__name__}: {exc}'
+
     with ThreadPoolExecutor(max_workers=max(1,min(a.max_workers,len(symbols)))) as ex:
         futs=[ex.submit(load_symbol,s) for s in symbols]
         for f in as_completed(futs):
-            try:
-                s,(fr,meta)=f.result(); archive_meta[s]=meta
-                if fr.empty: failures[s]='empty panel'
-                else: panels.append(fr)
-            except Exception as e:
-                failures[getattr(e,'symbol','unknown')]=f'{type(e).__name__}: {e}'
+            s,fr,meta,err=f.result()
+            if err is not None:
+                failures[s]=err
+                continue
+            archive_meta[s]=meta
+            if fr.empty: failures[s]='empty panel'
+            else: panels.append(fr)
+
     if len(panels)<6: raise RuntimeError(f'Need >=6 usable perpetuals, got {len(panels)}; failures={failures}')
     panel=pd.concat(panels,ignore_index=True).sort_values(['timestamp','symbol']); panel.to_csv(out/'cross_sectional_raw_panel.csv',index=False)
     cfg=CrossSectionConfig(start_month=a.start_month,end_month=a.end_month,n_splits=3,top_quantile=.20,one_way_cost_bps=a.fee_bps+a.slippage_bps)
