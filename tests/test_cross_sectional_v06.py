@@ -1,11 +1,14 @@
 import numpy as np
 import pandas as pd
+import pytest
+
 from research_bot.cross_sectional_v06 import (
     _canonical_utc_timestamp,
     add_cross_sectional_features,
     run_cross_sectional_experiment,
     CrossSectionConfig,
 )
+from scripts.run_cross_sectional_v06 import _filter_regime_comparison
 
 
 def synthetic_panel(n_times=800,n_symbols=8,seed=11):
@@ -34,3 +37,21 @@ def test_timestamp_canonicalization_prevents_merge_asof_unit_failure():
     assert left.timestamp.dtype == right.timestamp.dtype
     merged=pd.merge_asof(left.sort_values('timestamp'),right.sort_values('timestamp'),on='timestamp',direction='backward')
     assert merged.y.tolist()==[10,20,30,40]
+
+
+def test_regime_comparison_contract_uses_horizon_bars():
+    comp=pd.DataFrame([
+        {'horizon_bars':1,'regime':'bear','variant':'open_interest','incremental_mean_return':0.001},
+        {'horizon_bars':1,'regime':'bull','variant':'open_interest','incremental_mean_return':-0.001},
+        {'horizon_bars':3,'regime':'bear','variant':'open_interest','incremental_mean_return':0.002},
+    ])
+    out=_filter_regime_comparison(comp,1,'bear','open_interest')
+    assert len(out)==1
+    assert out.iloc[0]['horizon_bars']==1
+    assert out.iloc[0]['regime']=='bear'
+
+
+def test_regime_comparison_contract_fails_fast_on_schema_drift():
+    comp=pd.DataFrame([{'horizon':1,'regime':'bear','variant':'open_interest'}])
+    with pytest.raises(RuntimeError,match='schema mismatch'):
+        _filter_regime_comparison(comp,1,'bear','open_interest')
