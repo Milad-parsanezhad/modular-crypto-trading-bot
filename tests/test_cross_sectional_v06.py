@@ -5,11 +5,11 @@ import pytest
 from research_bot.cross_sectional_v06 import (
     _canonical_utc_timestamp,
     _portfolio_from_scores,
+    filter_regime_comparison,
     add_cross_sectional_features,
     run_cross_sectional_experiment,
     CrossSectionConfig,
 )
-from scripts.run_cross_sectional_v06 import _filter_regime_comparison
 
 
 def synthetic_panel(n_times=800,n_symbols=8,seed=11):
@@ -59,7 +59,7 @@ def test_regime_comparison_contract_uses_horizon_bars():
         {'horizon_bars':1,'regime':'bull','variant':'open_interest','incremental_mean_return':-0.001},
         {'horizon_bars':3,'regime':'bear','variant':'open_interest','incremental_mean_return':0.002},
     ])
-    out=_filter_regime_comparison(comp,1,'bear','open_interest')
+    out=filter_regime_comparison(comp,1,'bear','open_interest')
     assert len(out)==1
     assert out.iloc[0]['horizon_bars']==1
     assert out.iloc[0]['regime']=='bear'
@@ -68,4 +68,4 @@ def test_regime_comparison_contract_uses_horizon_bars():
 def test_regime_comparison_contract_fails_fast_on_schema_drift():
     comp=pd.DataFrame([{'horizon':1,'regime':'bear','variant':'open_interest'}])
     with pytest.raises(RuntimeError,match='schema mismatch'):
-        _filter_regime_comparison(comp,1,'bear','open_interest')
+        filter_regime_comparison(comp,1,'bear','open_interest')
