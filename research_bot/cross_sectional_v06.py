@@ -154,9 +154,19 @@ def _model(kind:str,seed:int):
     raise ValueError(kind)
 
 
-def _portfolio_from_scores(test:pd.DataFrame,score_col:str,target_col:str,q:float,cost_bps:float):
+def _portfolio_from_scores(test:pd.DataFrame,score_col:str,target_col:str,q:float,cost_bps:float,rebalance_every:int=1):
+    """Build a non-overlapping dollar-neutral portfolio path.
+
+    `rebalance_every` is measured in decision bars. A 24h target on an 8h clock
+    therefore uses rebalance_every=3; otherwise overlapping 24h outcomes would
+    be compounded every 8h and the reported return/Sharpe would not represent a
+    self-consistent holding-period strategy.
+    """
+    if rebalance_every < 1: raise ValueError('rebalance_every must be >=1')
     rows=[]; prev={}
-    for ts,g in test.groupby('timestamp',sort=True):
+    grouped=list(test.groupby('timestamp',sort=True))
+    for i,(ts,g) in enumerate(grouped):
+        if i % rebalance_every != 0: continue
         z=g.dropna(subset=[score_col,target_col]).copy(); n=len(z)
         if n<6: continue
         k=max(1,int(np.floor(n*q))); z=z.sort_values(score_col)
@@ -178,6 +188,7 @@ def _perf(r:pd.Series,periods_per_year:float):
 
 
 def run_cross_sectional_experiment(panel:pd.DataFrame,cfg:CrossSectionConfig,horizon:int=1):
+    if horizon not in (1,3): raise ValueError('v0.6 supports horizon=1 (8h) or horizon=3 (24h)')
     x=add_cross_sectional_features(panel); target='future_ret_8h' if horizon==1 else 'future_ret_24h'; results=[]; predictions=[]
     variants={'baseline':BASELINE_FEATURES,'funding_premium':BASELINE_FEATURES+FUNDING_PREMIUM_FEATURES}
     for fold,(train_ts,test_ts) in enumerate(_time_folds(x.timestamp,cfg.n_splits),1):
@@ -191,10 +202,11 @@ def run_cross_sectional_experiment(panel:pd.DataFrame,cfg:CrossSectionConfig,hor
                 tmp=te[['timestamp','symbol',target]].copy(); tmp['score']=p; tmp['fold']=fold; tmp['variant']=variant; tmp['model']=model_kind; predictions.append(tmp)
     pred=pd.concat(predictions,ignore_index=True) if predictions else pd.DataFrame()
     if pred.empty:return pd.DataFrame(),pred
-    ppy=3*365/(1 if horizon==1 else 3)
+    ppy=(3*365)/horizon
     for (model,variant),g in pred.groupby(['model','variant']):
-        bt=_portfolio_from_scores(g,'score',target,cfg.top_quantile,cfg.one_way_cost_bps); d=_perf(bt.net_return,ppy); d.update({'model':model,'variant':variant,'horizon_hours':8 if horizon==1 else 24,'mean_turnover':float(bt.turnover.mean()) if not bt.empty else np.nan,'timestamps':int(bt.timestamp.nunique()) if not bt.empty else 0})
-        # Cross-sectional information coefficient.
+        bt=_portfolio_from_scores(g,'score',target,cfg.top_quantile,cfg.one_way_cost_bps,rebalance_every=horizon)
+        d=_perf(bt.net_return,ppy); d.update({'model':model,'variant':variant,'horizon_hours':8*horizon,'rebalance_every_bars':horizon,'mean_turnover':float(bt.turnover.mean()) if not bt.empty else np.nan,'timestamps':int(bt.timestamp.nunique()) if not bt.empty else 0})
+        # IC is descriptive and may use all forecast timestamps; portfolio PnL above is non-overlapping.
         ics=[]
         for _,z in g.groupby('timestamp'):
             if z.score.nunique()>1 and z[target].nunique()>1: ics.append(z.score.corr(z[target],method='spearman'))
