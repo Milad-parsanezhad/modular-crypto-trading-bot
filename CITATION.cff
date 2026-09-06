@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "Please cite this software when using its implementation; cite the original papers separately."
+type: software
+title: "Modular Crypto Trading Bot: Ichimoku, ML and RL Research"
+authors:
+  - family-names: "Parsanezhad"
+    given-names: "Milad"
+version: 0.1.0
+date-released: 2026-09-06
+repository-code: "https://github.com/parsa314/modular-crypto-trading-bot"
+abstract: "A reproducible research implementation for causal features, chronological experiments and simulated cryptocurrency trading."

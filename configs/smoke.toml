@@ -1,0 +1,25 @@
+symbol = "BTC/USDT"
+timeframe = "4h"
+lookback = 12
+horizon = 1
+train_bars = 400
+validation_bars = 100
+test_bars = 100
+folds = 2
+seeds = [42]
+models = ["random_forest", "xgboost", "lstm", "cnn", "transformer", "ppo"]
+thresholds = [0.5, 0.55]
+epochs = 3
+ppo_steps = 1024
+ablation = true
+
+[risk]
+initial_cash = 10000.0
+fee = 0.001
+slippage_bps = 5.0
+allocation = 0.95
+risk_per_trade = 0.02
+stop_atr = 2.0
+take_atr = 4.0
+max_drawdown = 0.05
+daily_loss = 0.03
