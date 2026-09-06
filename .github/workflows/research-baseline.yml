@@ -8,6 +8,8 @@ on:
       - "research_bot/**"
       - "scripts/**"
       - "tests/**"
+      - "notebooks/**"
+      - "docs/**"
       - "pyproject.toml"
       - ".github/workflows/research-baseline.yml"
 
@@ -17,7 +19,7 @@ permissions:
 jobs:
   baseline:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,9 +34,14 @@ jobs:
         run: pytest -q
       - name: Real-market baseline
         run: |
-          python scripts/run_baseline.py --exchange coinex --symbol BTC/USDT --timeframe 4h --limit 2000 --fee-bps 10 --slippage-bps 2 --output artifacts/baseline_report.json
-      - name: Upload research report
+          python scripts/run_baseline.py --exchange coinex --symbol BTC/USDT --timeframe 4h --limit 3000 --fee-bps 10 --slippage-bps 2 --output artifacts/baseline_report.json
+      - name: v0.2 replication component test
+        run: |
+          python scripts/run_replication_v02.py --exchange coinex --symbol BTC/USDT --timeframe 4h --limit 3000 --fee-bps 10 --slippage-bps 2 --output artifacts/replication_v02_report.json
+      - name: Upload research reports
         uses: actions/upload-artifact@v4
         with:
-          name: baseline-report
-          path: artifacts/baseline_report.json
+          name: research-reports-v02
+          path: |
+            artifacts/baseline_report.json
+            artifacts/replication_v02_report.json
