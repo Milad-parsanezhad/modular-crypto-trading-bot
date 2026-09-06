@@ -265,6 +265,8 @@ def fetch_coinex_market_deals(
     if not rows:
         return pd.DataFrame(columns=["timestamp", "deal_id", "side", "price", "amount", "notional", "market"])
     df = pd.DataFrame(rows)
+    if "market" not in df.columns:
+        df["market"] = market
     df["timestamp"] = pd.to_datetime(df["created_at"], unit="ms", utc=True)
     for col in ["price", "amount"]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
