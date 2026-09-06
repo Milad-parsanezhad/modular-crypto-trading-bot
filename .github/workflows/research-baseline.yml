@@ -19,7 +19,7 @@ permissions:
 jobs:
   baseline:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -38,13 +38,13 @@ jobs:
       - name: v0.2 replication component test
         run: |
           python scripts/run_replication_v02.py --exchange coinex --symbol BTC/USDT --timeframe 4h --limit 3000 --fee-bps 10 --slippage-bps 2 --output artifacts/replication_v02_report.json
-      - name: v0.3 data and alpha ingestion
+      - name: v0.3 deep-history data and alpha ingestion
         run: |
-          python scripts/run_alpha_data_v03.py --symbol BTC/USDT --bars 3000 --period 4hour --funding-days 365 --basis-days 30 --trade-pages 5 --output-dir artifacts/v03
+          python scripts/run_alpha_data_v03.py --symbol BTC/USDT --bars 15000 --period 4hour --funding-days 2500 --basis-days 365 --trade-pages 5 --output-dir artifacts/v03
       - name: Upload research reports
         uses: actions/upload-artifact@v4
         with:
-          name: research-reports-v03
+          name: research-reports-v03-deep
           path: |
             artifacts/baseline_report.json
             artifacts/replication_v02_report.json
