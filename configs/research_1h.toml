@@ -1,0 +1,26 @@
+# Sensitivity profile: equal calendar lengths and equal 4-hour forecast horizon.
+symbol = "BTC/USDT"
+timeframe = "1h"
+lookback = 96
+horizon = 4
+train_bars = 7200
+validation_bars = 1440
+test_bars = 1440
+folds = 3
+seeds = [7, 42, 314]
+models = ["random_forest", "xgboost", "lstm", "ppo"]
+thresholds = [0.5, 0.55, 0.6]
+epochs = 20
+ppo_steps = 80000
+ablation = true
+
+[risk]
+initial_cash = 10000.0
+fee = 0.001
+slippage_bps = 5.0
+allocation = 0.95
+risk_per_trade = 0.02
+stop_atr = 2.0
+take_atr = 4.0
+max_drawdown = 0.05
+daily_loss = 0.03
