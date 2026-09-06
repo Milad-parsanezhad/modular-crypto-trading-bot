@@ -29,12 +29,7 @@ class CrossSectionConfig:
 
 
 def _canonical_utc_timestamp(values):
-    """Normalize all event clocks to one merge-safe dtype.
-
-    pandas 3 can preserve source resolution (us/ms/ns) even when every series is
-    timezone-aware. merge_asof requires the dtype units to be identical, so the
-    research clock is canonicalized to UTC nanoseconds before any alignment.
-    """
+    """Normalize all event clocks to one merge-safe dtype."""
     s = pd.to_datetime(values, utc=True, errors='coerce')
     if isinstance(s, pd.Series):
         return s.astype('datetime64[ns, UTC]')
@@ -42,16 +37,27 @@ def _canonical_utc_timestamp(values):
 
 
 def filter_regime_comparison(comp: pd.DataFrame, horizon_bars: int, regime: str, variant: str) -> pd.DataFrame:
-    """Validate and filter regime-engine comparison output.
-
-    This is intentionally in the package (not scripts/) so tests and callers use
-    the same contract and CI does not depend on script-package import behavior.
-    """
+    """Validate and filter regime-engine comparison output."""
     required={'horizon_bars','regime','variant'}
     missing=required-set(comp.columns)
     if missing:
         raise RuntimeError(f'Regime comparison schema mismatch: missing={sorted(missing)} columns={list(comp.columns)}')
     return comp[(comp['horizon_bars']==horizon_bars)&(comp['regime']==regime)&(comp['variant']==variant)].copy()
+
+
+def _purge_train_timestamps(train_ts, horizon_bars:int):
+    """Remove the last label horizon from a training fold.
+
+    A forward h-bar label at time t consumes prices through t+h. Without this
+    purge, the last h training labels can use prices that lie inside the next
+    test block. This helper enforces the point-in-time fold boundary.
+    """
+    if horizon_bars < 1:
+        raise ValueError('horizon_bars must be >=1')
+    ts=np.asarray(train_ts)
+    if len(ts) <= horizon_bars:
+        return ts[:0]
+    return ts[:-horizon_bars]
 
 
 def _month_range(start_month:str,end_month:str|None=None):
@@ -195,20 +201,22 @@ def run_cross_sectional_experiment(panel:pd.DataFrame,cfg:CrossSectionConfig,hor
     x=add_cross_sectional_features(panel); target='future_ret_8h' if horizon==1 else 'future_ret_24h'; results=[]; predictions=[]
     variants={'baseline':BASELINE_FEATURES,'funding_premium':BASELINE_FEATURES+FUNDING_PREMIUM_FEATURES}
     for fold,(train_ts,test_ts) in enumerate(_time_folds(x.timestamp,cfg.n_splits),1):
-        tr=x[x.timestamp.isin(train_ts)].dropna(subset=[target]).copy(); te=x[x.timestamp.isin(test_ts)].dropna(subset=[target]).copy()
+        safe_train_ts=_purge_train_timestamps(train_ts,horizon)
+        if len(safe_train_ts)==0: continue
+        tr=x[x.timestamp.isin(safe_train_ts)].dropna(subset=[target]).copy(); te=x[x.timestamp.isin(test_ts)].dropna(subset=[target]).copy()
         y=(tr[target]>0).astype(int)
         if y.nunique()<2: continue
         for model_kind in ('ridge_logit','hgb'):
             for variant,cols in variants.items():
                 cols=[c for c in cols if c in x.columns]
                 m=_model(model_kind,cfg.random_state); m.fit(tr[cols],y); p=m.predict_proba(te[cols])[:,1]
-                tmp=te[['timestamp','symbol',target]].copy(); tmp['score']=p; tmp['fold']=fold; tmp['variant']=variant; tmp['model']=model_kind; predictions.append(tmp)
+                tmp=te[['timestamp','symbol',target]].copy(); tmp['score']=p; tmp['fold']=fold; tmp['variant']=variant; tmp['model']=model_kind; tmp['purge_bars']=horizon; predictions.append(tmp)
     pred=pd.concat(predictions,ignore_index=True) if predictions else pd.DataFrame()
     if pred.empty:return pd.DataFrame(),pred
     ppy=(3*365)/horizon
     for (model,variant),g in pred.groupby(['model','variant']):
         bt=_portfolio_from_scores(g,'score',target,cfg.top_quantile,cfg.one_way_cost_bps,rebalance_every=horizon)
-        d=_perf(bt.net_return,ppy); d.update({'model':model,'variant':variant,'horizon_hours':8*horizon,'rebalance_every_bars':horizon,'mean_turnover':float(bt.turnover.mean()) if not bt.empty else np.nan,'timestamps':int(bt.timestamp.nunique()) if not bt.empty else 0})
+        d=_perf(bt.net_return,ppy); d.update({'model':model,'variant':variant,'horizon_hours':8*horizon,'rebalance_every_bars':horizon,'purge_bars':horizon,'mean_turnover':float(bt.turnover.mean()) if not bt.empty else np.nan,'timestamps':int(bt.timestamp.nunique()) if not bt.empty else 0})
         ics=[]
         for _,z in g.groupby('timestamp'):
             if z.score.nunique()>1 and z[target].nunique()>1: ics.append(z.score.corr(z[target],method='spearman'))
