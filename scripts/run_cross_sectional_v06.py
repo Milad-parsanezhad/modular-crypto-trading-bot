@@ -8,7 +8,7 @@ import pandas as pd
 
 from research_bot.cross_sectional_v06 import (
     CrossSectionConfig, build_symbol_panel, run_cross_sectional_experiment,
-    fetch_um_monthly_raw_klines,
+    fetch_um_monthly_raw_klines, filter_regime_comparison,
 )
 from research_bot.binance_vision import fetch_um_daily_metrics
 from research_bot.alpha_ablation import build_point_in_time_features
@@ -28,20 +28,6 @@ def clean(o):
     return o
 
 
-def _filter_regime_comparison(comp: pd.DataFrame, horizon_bars: int, regime: str, variant: str) -> pd.DataFrame:
-    """Fail fast when the regime-engine/report contract changes.
-
-    The regime engine's public comparison schema uses `horizon_bars`; keeping the
-    assertion here prevents a silent empty result or an AttributeError after a
-    long data-ingestion run.
-    """
-    required={'horizon_bars','regime','variant'}
-    missing=required-set(comp.columns)
-    if missing:
-        raise RuntimeError(f'Regime comparison schema mismatch: missing={sorted(missing)} columns={list(comp.columns)}')
-    return comp[(comp['horizon_bars']==horizon_bars)&(comp['regime']==regime)&(comp['variant']==variant)].copy()
-
-
 def independent_oi_confirmation(start_month:str,end_month:str|None,fee_bps:float,slippage_bps:float):
     px,meta=fetch_um_monthly_raw_klines('ETHUSDT','4h',start_month,end_month,True,'klines')
     if px.empty: return {'error':'ETHUSDT kline archive unavailable'}
@@ -58,7 +44,7 @@ def independent_oi_confirmation(start_month:str,end_month:str|None,fee_bps:float
     cfg=RegimeRobustnessConfig(horizons=(1,),n_splits=3,min_train_size=700,fee_bps=fee_bps,slippage_bps=slippage_bps,bootstrap_runs=500,min_regime_obs=40)
     variants={'baseline':['baseline'],'open_interest':['baseline','open_interest']}
     summ,cond,comp,trans,rc,thr,pred,robust=run_regime_horizon_panel(feat,fams,variants,cfg)
-    bear=_filter_regime_comparison(comp,1,'bear','open_interest')
+    bear=filter_regime_comparison(comp,1,'bear','open_interest')
     return {'asset':'ETHUSDT','frozen_hypothesis':'OI × Bear regime × 4h','summary':summ.to_dict('records'),'bear_incremental_comparison':bear.to_dict('records'),'robustness':robust,'kline_meta':meta,'oi_meta':oimeta,'note':'Independent asset confirmation only; same venue family and frozen methodology as discovery.'}
 
 
@@ -95,7 +81,7 @@ def main():
     summary=pd.concat(results,ignore_index=True); predictions=pd.concat(preds,ignore_index=True)
     summary.to_csv(out/'cross_sectional_summary.csv',index=False); predictions.to_csv(out/'cross_sectional_predictions.csv',index=False)
     oi=independent_oi_confirmation('2025-09',a.end_month,a.fee_bps,a.slippage_bps)
-    report={'research_status':'v0.6_cross_sectional_perpetuals_independent_confirmation_not_production','universe_requested':symbols,'universe_usable':sorted(panel.symbol.unique().tolist()),'archive_failures':failures,'coverage':{'start':panel.timestamp.min().isoformat(),'end':panel.timestamp.max().isoformat(),'rows':int(len(panel)),'settlements':int(panel.timestamp.nunique())},'cross_sectional_design':{'clock':'completed 8h perpetual bars aligned to settlement availability','variants':['baseline market/liquidity/order-flow','baseline + funding/premium crowding'],'models':['ridge logistic','HistGradientBoosting'],'portfolio':'dollar-neutral top/bottom 20% cross-sectional score','one_way_cost_bps':a.fee_bps+a.slippage_bps,'labels':['8h forward return','24h forward return'],'validation':'expanding chronological folds; no test tuning'},'cross_sectional_summary':summary.to_dict('records'),'oi_independent_confirmation':oi,'archive_meta':archive_meta,'warnings':['Cross-sectional v0.6 is a research replication, not a live strategy.','The first panel uses 12 liquid perpetual candidates and will only scale to 19-30 after data-quality validation.','No deep model is allowed to replace simple baselines until incremental information is demonstrated.']}
+    report={'research_status':'v0.6_cross_sectional_perpetuals_independent_confirmation_not_production','universe_requested':symbols,'universe_usable':sorted(panel.symbol.unique().tolist()),'archive_failures':failures,'coverage':{'start':panel.timestamp.min().isoformat(),'end':panel.timestamp.max().isoformat(),'rows':int(len(panel)),'settlements':int(panel.timestamp.nunique())},'cross_sectional_design':{'clock':'completed 8h perpetual bars aligned to settlement availability','variants':['baseline market/liquidity/order-flow','baseline + funding/premium crowding'],'models':['ridge logistic','HistGradientBoosting'],'portfolio':'dollar-neutral top/bottom 20% cross-sectional score','one_way_cost_bps':a.fee_bps+a.slippage_bps,'labels':['8h forward return','24h forward return'],'validation':'expanding chronological folds; no test tuning','24h_pnl':'non-overlapping 3-bar holding periods'},'cross_sectional_summary':summary.to_dict('records'),'oi_independent_confirmation':oi,'archive_meta':archive_meta,'warnings':['Cross-sectional v0.6 is a research replication, not a live strategy.','The first panel uses 12 liquid perpetual candidates and will only scale to 19-30 after data-quality validation.','No deep model is allowed to replace simple baselines until incremental information is demonstrated.','Perpetual funding cashflows are not yet included in reported portfolio PnL; v0.6 therefore measures price alpha net of execution-cost assumptions, not complete economic PnL.']}
     (out/'v06_report.json').write_text(json.dumps(clean(report),indent=2),encoding='utf-8'); print('===V06_REPORT==='); print(json.dumps(clean(report),indent=2)); print('===END_V06_REPORT===')
 
 if __name__=='__main__': main()
