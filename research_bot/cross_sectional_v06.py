@@ -41,6 +41,19 @@ def _canonical_utc_timestamp(values):
     return pd.Series(s, dtype='datetime64[ns, UTC]')
 
 
+def filter_regime_comparison(comp: pd.DataFrame, horizon_bars: int, regime: str, variant: str) -> pd.DataFrame:
+    """Validate and filter regime-engine comparison output.
+
+    This is intentionally in the package (not scripts/) so tests and callers use
+    the same contract and CI does not depend on script-package import behavior.
+    """
+    required={'horizon_bars','regime','variant'}
+    missing=required-set(comp.columns)
+    if missing:
+        raise RuntimeError(f'Regime comparison schema mismatch: missing={sorted(missing)} columns={list(comp.columns)}')
+    return comp[(comp['horizon_bars']==horizon_bars)&(comp['regime']==regime)&(comp['variant']==variant)].copy()
+
+
 def _month_range(start_month:str,end_month:str|None=None):
     now=pd.Timestamp.now(tz='UTC')
     end_month=end_month or (now.tz_localize(None).to_period('M')-1).strftime('%Y-%m')
@@ -60,7 +73,6 @@ def fetch_um_monthly_raw_klines(symbol:str,interval:str='8h',start_month:str='20
         raw=raw.iloc[:,:min(len(KLINE_COLUMNS),raw.shape[1])].copy(); raw.columns=KLINE_COLUMNS[:raw.shape[1]]
         raw['timestamp_open']=_canonical_utc_timestamp(_utc(raw['open_time']))
         raw['timestamp']=_canonical_utc_timestamp(_utc(raw['close_time']))
-        # Decision timestamp is when the completed bar is knowable. close_time is inclusive; round to next millisecond boundary.
         raw['timestamp']=raw['timestamp']+pd.Timedelta(milliseconds=1)
         for c in ('open','high','low','close','volume','quote_volume','taker_buy_quote'):
             if c in raw: raw[c]=pd.to_numeric(raw[c],errors='coerce')
@@ -125,7 +137,6 @@ def add_cross_sectional_features(panel:pd.DataFrame):
         x[f'{prefix}_z21']=(x[col]-mu)/sd.replace(0,np.nan)
         x[f'{prefix}_mean21']=mu
     x['fund_cum21']=g['funding_rate'].rolling(21,min_periods=10).sum().reset_index(level=0,drop=True)
-    # Cross-sectional ranks use only values available at the current settlement timestamp.
     rank_cols=['funding_rate','fund_z21','premium_index_close','prem_z21','mom_3','mom_9','vol_21','liq_log_quote','orderflow_imbalance']
     for c in rank_cols: x[f'cs_{c}_pct']=x.groupby('timestamp')[c].rank(pct=True,method='average')
     x['future_ret_8h']=g['futures_close'].shift(-1)/x['futures_close']-1
@@ -155,16 +166,8 @@ def _model(kind:str,seed:int):
 
 
 def _portfolio_from_scores(test:pd.DataFrame,score_col:str,target_col:str,q:float,cost_bps:float,rebalance_every:int=1):
-    """Build a non-overlapping dollar-neutral portfolio path.
-
-    `rebalance_every` is measured in decision bars. A 24h target on an 8h clock
-    therefore uses rebalance_every=3; otherwise overlapping 24h outcomes would
-    be compounded every 8h and the reported return/Sharpe would not represent a
-    self-consistent holding-period strategy.
-    """
     if rebalance_every < 1: raise ValueError('rebalance_every must be >=1')
-    rows=[]; prev={}
-    grouped=list(test.groupby('timestamp',sort=True))
+    rows=[]; prev={}; grouped=list(test.groupby('timestamp',sort=True))
     for i,(ts,g) in enumerate(grouped):
         if i % rebalance_every != 0: continue
         z=g.dropna(subset=[score_col,target_col]).copy(); n=len(z)
@@ -206,7 +209,6 @@ def run_cross_sectional_experiment(panel:pd.DataFrame,cfg:CrossSectionConfig,hor
     for (model,variant),g in pred.groupby(['model','variant']):
         bt=_portfolio_from_scores(g,'score',target,cfg.top_quantile,cfg.one_way_cost_bps,rebalance_every=horizon)
         d=_perf(bt.net_return,ppy); d.update({'model':model,'variant':variant,'horizon_hours':8*horizon,'rebalance_every_bars':horizon,'mean_turnover':float(bt.turnover.mean()) if not bt.empty else np.nan,'timestamps':int(bt.timestamp.nunique()) if not bt.empty else 0})
-        # IC is descriptive and may use all forecast timestamps; portfolio PnL above is non-overlapping.
         ics=[]
         for _,z in g.groupby('timestamp'):
             if z.score.nunique()>1 and z[target].nunique()>1: ics.append(z.score.corr(z[target],method='spearman'))
