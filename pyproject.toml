@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "modular-crypto-research-bot"
+version = "0.1.0"
+description = "Evidence-driven modular cryptocurrency trading research platform"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "ccxt==4.5.77",
+  "numpy>=1.26,<3",
+  "pandas>=2.2,<4",
+  "scikit-learn>=1.5,<2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[tool.setuptools.packages.find]
+include = ["research_bot*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

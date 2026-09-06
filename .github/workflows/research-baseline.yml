@@ -1,0 +1,40 @@
+name: research-baseline
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "research_bot/**"
+      - "scripts/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - ".github/workflows/research-baseline.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Unit tests
+        run: pytest -q
+      - name: Real-market baseline
+        run: |
+          python scripts/run_baseline.py --exchange coinex --symbol BTC/USDT --timeframe 4h --limit 2000 --fee-bps 10 --slippage-bps 2 --output artifacts/baseline_report.json
+      - name: Upload research report
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-report
+          path: artifacts/baseline_report.json
