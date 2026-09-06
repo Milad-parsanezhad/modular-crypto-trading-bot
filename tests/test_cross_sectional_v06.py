@@ -5,6 +5,7 @@ import pytest
 from research_bot.cross_sectional_v06 import (
     _canonical_utc_timestamp,
     _portfolio_from_scores,
+    _purge_train_timestamps,
     filter_regime_comparison,
     add_cross_sectional_features,
     run_cross_sectional_experiment,
@@ -25,7 +26,7 @@ def test_feature_panel_is_cross_sectional_and_point_in_time_shape():
 
 
 def test_cross_sectional_experiment_runs():
-    panel=synthetic_panel(); cfg=CrossSectionConfig(n_splits=2,top_quantile=.25,one_way_cost_bps=6); summary,pred=run_cross_sectional_experiment(panel,cfg,1); assert not summary.empty; assert set(summary.variant)=={'baseline','funding_premium'}; assert set(summary.model)=={'ridge_logit','hgb'}; assert pred.timestamp.nunique()>100
+    panel=synthetic_panel(); cfg=CrossSectionConfig(n_splits=2,top_quantile=.25,one_way_cost_bps=6); summary,pred=run_cross_sectional_experiment(panel,cfg,1); assert not summary.empty; assert set(summary.variant)=={'baseline','funding_premium'}; assert set(summary.model)=={'ridge_logit','hgb'}; assert pred.timestamp.nunique()>100; assert set(pred.purge_bars)=={1}
 
 
 def test_timestamp_canonicalization_prevents_merge_asof_unit_failure():
@@ -38,6 +39,15 @@ def test_timestamp_canonicalization_prevents_merge_asof_unit_failure():
     assert left.timestamp.dtype == right.timestamp.dtype
     merged=pd.merge_asof(left.sort_values('timestamp'),right.sort_values('timestamp'),on='timestamp',direction='backward')
     assert merged.y.tolist()==[10,20,30,40]
+
+
+def test_forward_label_horizon_is_purged_from_training_boundary():
+    ts=np.array(pd.date_range('2024-01-01',periods=10,freq='8h',tz='UTC'))
+    p1=_purge_train_timestamps(ts,1); p3=_purge_train_timestamps(ts,3)
+    assert len(p1)==9 and p1[-1]==ts[-2]
+    assert len(p3)==7 and p3[-1]==ts[-4]
+    assert len(_purge_train_timestamps(ts[:3],3))==0
+    with pytest.raises(ValueError): _purge_train_timestamps(ts,0)
 
 
 def test_24h_portfolio_evaluation_is_non_overlapping_on_8h_clock():
