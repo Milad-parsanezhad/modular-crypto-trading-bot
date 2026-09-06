@@ -32,7 +32,9 @@ jobs:
       - name: v0.6 cross-sectional research
         run: python scripts/run_cross_sectional_v06.py --start-month 2022-01 --output-dir artifacts/v06 --fee-bps 4 --slippage-bps 2 --max-workers 6
       - name: Upload v0.6 artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: v06-cross-sectional-results
           path: artifacts/v06/**
+          if-no-files-found: warn
