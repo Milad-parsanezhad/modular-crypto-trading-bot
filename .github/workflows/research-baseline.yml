@@ -19,7 +19,7 @@ permissions:
 jobs:
   baseline:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -33,19 +33,19 @@ jobs:
       - name: Unit tests
         run: pytest -q
       - name: Real-market baseline
-        run: |
-          python scripts/run_baseline.py --exchange coinex --symbol BTC/USDT --timeframe 4h --limit 3000 --fee-bps 10 --slippage-bps 2 --output artifacts/baseline_report.json
+        run: python scripts/run_baseline.py --exchange coinex --symbol BTC/USDT --timeframe 4h --limit 3000 --fee-bps 10 --slippage-bps 2 --output artifacts/baseline_report.json
       - name: v0.2 replication component test
-        run: |
-          python scripts/run_replication_v02.py --exchange coinex --symbol BTC/USDT --timeframe 4h --limit 3000 --fee-bps 10 --slippage-bps 2 --output artifacts/replication_v02_report.json
+        run: python scripts/run_replication_v02.py --exchange coinex --symbol BTC/USDT --timeframe 4h --limit 3000 --fee-bps 10 --slippage-bps 2 --output artifacts/replication_v02_report.json
       - name: v0.3 deep-history data and alpha ingestion
-        run: |
-          python scripts/run_alpha_data_v03.py --symbol BTC/USDT --bars 15000 --period 4hour --funding-days 2500 --basis-days 365 --trade-pages 5 --output-dir artifacts/v03
+        run: python scripts/run_alpha_data_v03.py --symbol BTC/USDT --bars 15000 --period 4hour --funding-days 2500 --basis-days 365 --trade-pages 5 --output-dir artifacts/v03
+      - name: v0.4 historical archive and alpha ablation
+        run: python scripts/run_ablation_v04.py --v03-dir artifacts/v03 --output-dir artifacts/v04 --archive-start-month 2023-09 --oi-days 365 --fee-bps 10 --slippage-bps 2 --threshold 0.56
       - name: Upload research reports
         uses: actions/upload-artifact@v4
         with:
-          name: research-reports-v03-deep
+          name: research-reports-v04
           path: |
             artifacts/baseline_report.json
             artifacts/replication_v02_report.json
             artifacts/v03/**
+            artifacts/v04/**
