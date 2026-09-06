@@ -1,0 +1,110 @@
+{
+  "config": {
+    "symbol": "BTC/USDT",
+    "timeframe": "4h",
+    "lookback": 12,
+    "horizon": 1,
+    "train_bars": 400,
+    "validation_bars": 100,
+    "test_bars": 100,
+    "folds": 2,
+    "seeds": [
+      42
+    ],
+    "models": [
+      "random_forest",
+      "xgboost",
+      "lstm",
+      "cnn",
+      "transformer",
+      "ppo"
+    ],
+    "thresholds": [
+      0.5,
+      0.55
+    ],
+    "epochs": 3,
+    "ppo_steps": 1024,
+    "ablation": true,
+    "risk": {
+      "initial_cash": 10000.0,
+      "fee": 0.001,
+      "slippage_bps": 5.0,
+      "allocation": 0.95,
+      "risk_per_trade": 0.02,
+      "stop_atr": 2.0,
+      "take_atr": 4.0,
+      "max_drawdown": 0.05,
+      "daily_loss": 0.03
+    }
+  },
+  "source_kind": "synthetic_software_test",
+  "source_metadata": {
+    "generator_seed": 314
+  },
+  "data_sha256": "a63224a5358c3bee75df4aaa2f53fa476d3efe62963722c0fec18f5bac986c15",
+  "raw_rows": 1600,
+  "feature_rows": 1523,
+  "first_open": "2020-01-01 00:00:00+00:00",
+  "last_open": "2020-09-23 12:00:00+00:00",
+  "versions": {
+    "python": "3.12.13",
+    "numpy": "2.3.5",
+    "pandas": "2.2.3",
+    "scikit-learn": "1.8.0",
+    "torch": "2.14.0+cpu",
+    "stable-baselines3": "2.9.0",
+    "gymnasium": "1.3.0",
+    "xgboost": "3.4.1",
+    "ccxt": "4.5.77"
+  },
+  "source_sha256": {
+    "__init__.py": "fa41c5d404f685184464d750cca4fb4618060dc16214a73fe00b4afba596e92f",
+    "cli.py": "3271f88a45d5c268a173fb4bd3a2b071c696a7c2f5d0e5ae0f613383f1b66207",
+    "config.py": "161f91126c128a51535d7c8e55efdea786f3a38f49237deddb04fac615b36c2d",
+    "data.py": "749cc3515434f8a770bc8fb328f5b0b58d1176c2bbe66eff7c552ba7d3565d9f",
+    "engine.py": "327da21efd4374c5fdcbbf3e0070c380a31d41de6d23609c4b7ea468b1216eba",
+    "experiment.py": "6548b23f98e793733f61eecff27fd56d8498c62745823d4b08f391e5209271ac",
+    "features.py": "b65c14658a6e8cb2e3bdf04299821a037ea91c995befcbf6b4059d83535e1658",
+    "metrics.py": "7036225e196815c742e6bbb9285563fab5d0b53de071a94ceb4ec7220ac1ad1c",
+    "models.py": "2e6aaf55d65c62f88fd4bfa624be1871c966c5b3677a18e76ced5bc945b44125",
+    "paper.py": "9e209cf4906d22935013f9ffe1973dda1f8b0b01cf05f115af9f18a795591a38",
+    "rl.py": "8ba0730c0ebf8e83583a6ed79a447a97dd413146c880b445c93aff9077737828",
+    "splits.py": "6628ee0dd09d069a663d90a769b66d9c3e9b42369c9b701afb39e34a389c87c5",
+    "torch_models.py": "af0e2c4aa1f51cce4edd0a0b652f6767e911d3eee351cf794035c17bcbae37f0"
+  },
+  "folds": [
+    {
+      "number": 0,
+      "train": [
+        0,
+        400
+      ],
+      "validation": [
+        402,
+        502
+      ],
+      "test": [
+        504,
+        604
+      ]
+    },
+    {
+      "number": 1,
+      "train": [
+        0,
+        500
+      ],
+      "validation": [
+        502,
+        602
+      ],
+      "test": [
+        604,
+        704
+      ]
+    }
+  ],
+  "status": "completed",
+  "scope": "development walk-forward; not an untouched final test"
+}
