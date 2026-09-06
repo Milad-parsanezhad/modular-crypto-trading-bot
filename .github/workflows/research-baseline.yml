@@ -19,7 +19,7 @@ permissions:
 jobs:
   baseline:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,13 +42,16 @@ jobs:
         run: python scripts/run_ablation_v04.py --v03-dir artifacts/v03 --output-dir artifacts/v04 --archive-start-month 2023-09 --oi-days 365 --fee-bps 10 --slippage-bps 2 --threshold 0.56
       - name: v0.5 regime-conditional alpha and robustness
         run: python scripts/run_regime_v05.py --v04-dir artifacts/v04 --output-dir artifacts/v05 --fee-bps 10 --slippage-bps 2 --bootstrap-runs 700
+      - name: v0.6 cross-sectional perpetuals and independent OI confirmation
+        run: python scripts/run_cross_sectional_v06.py --start-month 2022-01 --output-dir artifacts/v06 --fee-bps 4 --slippage-bps 2
       - name: Upload research reports
         uses: actions/upload-artifact@v4
         with:
-          name: research-reports-v05
+          name: research-reports-v06
           path: |
             artifacts/baseline_report.json
             artifacts/replication_v02_report.json
             artifacts/v03/**
             artifacts/v04/**
             artifacts/v05/**
+            artifacts/v06/**
