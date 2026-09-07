@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "modular-crypto-research-bot"
-version = "0.1.0"
-description = "Evidence-driven modular cryptocurrency trading research platform"
+version = "0.2.0"
+description = "Production-ready modular cryptocurrency trading bot with ML/RL, risk management, and live paper trading"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -13,13 +13,52 @@ dependencies = [
   "numpy>=1.26,<3",
   "pandas>=2.2,<4",
   "scikit-learn>=1.5,<2",
+  "tensorflow>=2.13,<3",
+  "torch>=2.0,<3",
+  "optuna>=3.0,<4",
+  "pyyaml>=6.0,<7",
+  "python-dotenv>=1.0,<2",
+  "requests>=2.31,<3",
+  "aiohttp>=3.9,<4",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10"]
+dev = [
+  "pytest>=8,<10",
+  "pytest-cov>=4.1,<5",
+  "pytest-asyncio>=0.21,<1",
+  "black>=23.0,<24",
+  "isort>=5.12,<6",
+  "mypy>=1.5,<2",
+  "flake8>=6.0,<7",
+]
+visualization = [
+  "plotly>=5.17,<6",
+  "streamlit>=1.28,<2",
+  "matplotlib>=3.8,<4",
+]
+monitoring = [
+  "prometheus-client>=0.18,<1",
+  "structlog>=23.1,<24",
+]
 
 [tool.setuptools.packages.find]
 include = ["research_bot*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--cov=research_bot --cov-report=term-missing"
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
