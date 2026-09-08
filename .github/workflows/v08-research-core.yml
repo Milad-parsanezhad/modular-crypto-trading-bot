@@ -3,11 +3,13 @@ name: v08-research-core
 on:
   workflow_dispatch:
   push:
-    branches: [research-v08-advanced-integration]
+    branches: [main, research-v08-advanced-integration]
     paths:
       - "research_bot/**"
       - "tests/test_v08_*.py"
+      - "tests/test_*v08.py"
       - "scripts/run_research_core_v08.py"
+      - "scripts/run_dynamic_universe_v08.py"
       - "docs/V08_ADVANCED_RESEARCH_INTEGRATION.md"
       - "pyproject.toml"
       - ".github/workflows/v08-research-core.yml"
@@ -30,7 +32,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
       - name: v0.8 regression tests
-        run: pytest -q tests/test_v08_*.py
+        run: pytest -q tests/test_v08_*.py tests/test_*v08.py
       - name: v0.8 engineering smoke
         run: python scripts/run_research_core_v08.py --output-dir artifacts/v08
       - name: Upload v0.8 artifacts
