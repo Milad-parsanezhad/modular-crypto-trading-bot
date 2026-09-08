@@ -13,7 +13,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="v0.8 dynamic multi-exchange public market discovery")
     parser.add_argument(
         "--exchanges",
-        default="coinex,kucoin,okx,gateio,mexc,bybit,binance",
+        default="coinex,kucoin,okx,gate,mexc,bybit,binance",
         help="Comma-separated CCXT exchange IDs. Provider failures are isolated and recorded.",
     )
     parser.add_argument("--quotes", default="USDT,USDC,USD")
