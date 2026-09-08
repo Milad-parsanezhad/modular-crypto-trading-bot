@@ -29,7 +29,7 @@ jobs:
       - name: Public multi-exchange discovery
         run: |
           python scripts/run_dynamic_universe_v08.py \
-            --exchanges coinex,kucoin,okx,gateio,mexc,bybit,binance \
+            --exchanges coinex,kucoin,okx,gate,mexc,bybit,binance \
             --quotes USDT,USDC,USD \
             --timeout-ms 12000 \
             --retries 1 \
