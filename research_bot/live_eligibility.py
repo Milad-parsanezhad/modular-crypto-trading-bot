@@ -175,12 +175,43 @@ class CCXTLiveAuditor:
 
     def fetch_bars(self, listing: MarketListing, timeframe: str, limit: int) -> pd.DataFrame:
         ex = self._exchange(listing.exchange)
-        rows = ex.fetch_ohlcv(listing.symbol, timeframe=timeframe, limit=min(int(limit), 1000))
+        if listing.symbol not in ex.markets:
+            raise ValueError(f"{listing.symbol} not found on {listing.exchange}")
+        if not ex.has.get("fetchOHLCV"):
+            raise RuntimeError(f"{listing.exchange} does not expose fetchOHLCV")
+
+        target = int(limit)
+        step_ms = int(ex.parse_timeframe(timeframe) * 1000)
+        cursor = ex.milliseconds() - int(target * step_ms * 1.08)
+        rows: list[list] = []
+        last_seen = None
+        request_limit = min(500, target)
+
+        for _ in range(10):
+            batch = ex.fetch_ohlcv(
+                listing.symbol,
+                timeframe=timeframe,
+                since=cursor,
+                limit=request_limit,
+            )
+            if not batch:
+                break
+            rows.extend(batch)
+            new_last = int(batch[-1][0])
+            if last_seen is not None and new_last <= last_seen:
+                break
+            last_seen = new_last
+            cursor = new_last + 1
+            if len({int(r[0]) for r in rows}) >= target:
+                break
+            if len(batch) < request_limit:
+                break
+
         if not rows:
             raise RuntimeError("No OHLCV returned")
         frame = pd.DataFrame(rows, columns=["timestamp", "open", "high", "low", "close", "volume"])
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], unit="ms", utc=True)
-        return frame.drop_duplicates("timestamp").sort_values("timestamp").tail(limit).reset_index(drop=True)
+        return frame.drop_duplicates("timestamp").sort_values("timestamp").tail(target).reset_index(drop=True)
 
     def fetch_spread_bps(self, listing: MarketListing) -> float | None:
         if listing.spread_bps is not None:
