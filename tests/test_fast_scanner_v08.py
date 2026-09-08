@@ -10,12 +10,15 @@ def _bars(seed: int, n: int = 320) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     ret = rng.normal(0.0005, 0.006, n)
     close = 100 * np.cumprod(1 + ret)
+    open_ = np.r_[close[0], close[:-1]]
+    high = np.maximum(open_, close) * (1 + rng.uniform(0.001, 0.008, n))
+    low = np.minimum(open_, close) * (1 - rng.uniform(0.001, 0.008, n))
     return pd.DataFrame(
         {
             "timestamp": pd.date_range("2025-01-01", periods=n, freq="4h", tz="UTC"),
-            "open": np.r_[close[0], close[:-1]],
-            "high": close * (1 + rng.uniform(0.001, 0.008, n)),
-            "low": close * (1 - rng.uniform(0.001, 0.008, n)),
+            "open": open_,
+            "high": high,
+            "low": low,
             "close": close,
             "volume": rng.uniform(100, 1000, n),
         }
