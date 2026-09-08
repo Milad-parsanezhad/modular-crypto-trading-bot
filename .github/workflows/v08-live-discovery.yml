@@ -1,0 +1,41 @@
+name: v08-live-public-discovery
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "research_bot/market_discovery.py"
+      - "scripts/run_dynamic_universe_v08.py"
+      - ".github/workflows/v08-live-discovery.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Public multi-exchange discovery
+        run: |
+          python scripts/run_dynamic_universe_v08.py \
+            --exchanges coinex,kucoin,okx,gateio,mexc,bybit,binance \
+            --quotes USDT,USDC,USD \
+            --timeout-ms 12000 \
+            --retries 1 \
+            --output artifacts/v08/dynamic_universe_discovery.json
+      - name: Upload discovery artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: v08-live-public-discovery
+          path: artifacts/v08/dynamic_universe_discovery.json
