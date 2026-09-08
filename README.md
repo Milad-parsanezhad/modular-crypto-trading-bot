@@ -1,45 +1,110 @@
-# Modular Crypto Trading Bot — Research Platform v0.1
+# Modular Crypto Trading Bot — Evidence-Driven Research Platform
 
-Evidence-driven, modular cryptocurrency trading research platform.
+Academic, modular cryptocurrency trading research platform for building and validating a multi-market intelligent trading system.
 
-> **Research status:** v0.1 is a reproducible baseline laboratory, **not** a production trading bot and not evidence of guaranteed profitability.
+> **Current branch:** `research-v08-advanced-integration`  
+> **Safety:** `LIVE` execution is disabled by default.  
+> **Scientific status:** this repository does **not** claim a validated profitable strategy. Negative OOS results are preserved.
 
-## Why this repository changed
+## Core research contract
 
-The literature review and evidence matrix shifted the project away from a single-indicator or single-model bot. The working architecture is now:
+**Evidence Before Opinion.** A trading claim is not accepted unless it has point-in-time data, provenance, reproducible artifacts, realistic costs and out-of-sample validation.
 
-**Data → Alpha features → Regime context → Model tournament → Uncertainty / abstention → Risk → Cost-aware execution → Robust validation → Paper trading**
+The platform now follows this path:
 
-Current high-priority research streams: order flow/microstructure; on-chain value/network activity; carry/funding/basis; momentum/liquidity; multi-dimensional regime detection; event-time sampling + triple-barrier labeling; uncertainty-aware trade/no-trade; execution/market-making RL; strict anti-overfitting validation.
+**Dynamic Universe → Eligibility/Coverage → Point-in-Time Features → Alpha/Ranking → Regime → Model Tournament → Cost/Uncertainty-Aware Abstention → Independent Risk → Cost-Aware Execution → Robust Validation → Paper Trading → Testnet → Live-Readiness Audit**
 
-Ichimoku remains a candidate feature family and must earn its place through ablation.
+Ichimoku is a candidate feature family and must earn its place through ablation. RL/Transformers/LLMs are challengers, not default winners.
 
-## What v0.1 implements
+## What exists today
 
-- public OHLCV download with CCXT (no API keys),
-- real-market BTC/USDT 4h baseline,
-- point-in-time technical/liquidity features,
+### Existing research engine (v0.1–v0.6)
+- public OHLCV and derivatives ingestion,
+- BTC/USDT 4h real-market baselines,
+- leakage-safe technical/liquidity features,
 - Ichimoku candidate features,
-- rolling regime descriptors,
-- chronological 70/30 holdout,
-- tree-based ML baseline (`HistGradientBoostingClassifier`),
-- probability-based abstention (long/flat),
-- explicit fee + slippage assumptions,
-- Buy & Hold and momentum baselines,
-- Sharpe, Sortino, drawdown and Calmar metrics,
-- automated synthetic unit test,
-- GitHub Actions cloud execution,
-- Colab-ready notebook.
+- CUSUM + triple-barrier replication,
+- purged/walk-forward validation,
+- funding/basis/order-flow research,
+- regime-conditional ablations,
+- cross-sectional research prototype,
+- CPCV/PBO/Deflated-Sharpe diagnostics,
+- GitHub Actions and Colab notebooks.
 
-## Run
+### v0.8 advanced research integration
+- `research_bot/contracts.py` — evidence/status/decision/execution contracts,
+- `research_bot/point_in_time.py` — availability-time as-of joins for on-chain/news/fundamental data,
+- `research_bot/universe.py` — dynamic eligibility, rejection reasons, deterministic dedup and measured coverage,
+- `research_bot/ichimoku_advanced.py` — leakage-safe Ichimoku state and algorithmic triangle-under-Kumo candidate detector,
+- `research_bot/decision.py` — Net-Alpha decision engine with cost/risk/uncertainty-aware abstention,
+- `research_bot/risk.py` — independent drawdown/exposure/liquidity/turnover/CVaR risk gate and kill switch,
+- `research_bot/execution.py` — guarded PAPER/BACKTEST/TESTNET simulator with fees, slippage, partial fills and idempotency,
+- `research_bot/orchestrator.py` — forecast → decision → risk → execution integration,
+- `research_bot/reproducibility.py` — dataset fingerprinting and experiment manifests,
+- richer backtest diagnostics including VaR/CVaR, profit factor, exposure, turnover and explicit/funding costs.
+
+See `docs/V08_ADVANCED_RESEARCH_INTEGRATION.md` for the research-to-code mapping.
+
+## Scientific findings already recorded
+
+The project has intentionally retained negative findings: a simple directional ML baseline did not outperform its benchmark in the initial real-market window, and CUSUM + triple-barrier labelling did not create alpha by itself. These findings changed the project toward cross-sectional ranking, derivatives/order-flow evidence, stronger validation and explicit execution/risk gates.
+
+## Install
+
 ```bash
 pip install -e ".[dev]"
 pytest -q
-python scripts/run_baseline.py --exchange coinex --symbol BTC/USDT --timeframe 4h --limit 2000
 ```
 
-## Google Colab
-Open `notebooks/Research_Bot_v0_1_Colab.ipynb` in Colab. It clones this repository, installs the package, runs tests, and executes the real-market baseline.
+## v0.8 engineering smoke test
 
-## Current scientific limitations
-v0.1 does not claim a validated profitable strategy. Still missing point-in-time on-chain/funding data, trades/LOB order flow, CUSUM/triple-barrier, CPCV/PBO/DSR, multi-seed DL/RL, capacity/market impact, funding/borrow/maker-taker model, untouched final test and forward paper trading.
+```bash
+python scripts/run_research_core_v08.py --output-dir artifacts/v08
+```
+
+Without `--input-csv`, this command uses deterministic **synthetic smoke data only to test engineering contracts**. Synthetic results are never valid thesis performance evidence.
+
+With a real OHLCV CSV:
+
+```bash
+python scripts/run_research_core_v08.py \
+  --input-csv path/to/real_ohlcv.csv \
+  --fee-bps 10 \
+  --slippage-bps 2 \
+  --output-dir artifacts/v08-real
+```
+
+Even a real single CSV run is not considered validated until it passes the full WFV/CPCV, regime, multiple-testing, cost and untouched-test protocol.
+
+## Required validation ladder
+
+1. Hypothesis registration
+2. Timestamp/lineage audit
+3. Leakage audit
+4. Purged WFV/CPCV
+5. Simple baselines
+6. Train/validation-only tuning
+7. Multiple seeds for stochastic models
+8. Fees/spread/slippage/funding
+9. Liquidity/capacity checks
+10. Regime stability
+11. Bootstrap confidence intervals
+12. PBO / Deflated Sharpe when strategy multiplicity exists
+13. Ablation
+14. Untouched final test
+15. Forward paper trading
+16. Testnet
+17. Live-readiness audit
+
+## Execution safety
+
+Predictive models never call an exchange directly. Signals must pass through cost/uncertainty abstention, an independent risk engine and an execution adapter. v0.8 contains no live-order implementation; the paper engine fails closed when `LIVE` is requested without explicit readiness.
+
+## Immediate next work
+
+- run dynamic-universe discovery with real public market metadata and persist coverage/rejection artifacts,
+- connect v0.6 cross-sectional ranking to the dynamic universe,
+- run Ichimoku and risk ablations under identical OOS/cost assumptions,
+- add point-in-time derivatives/on-chain/whale/fundamental connectors only where historical availability is trustworthy,
+- stabilize forward paper execution and reconciliation,
+- build the research/dashboard layer after backend artifacts are stable.
