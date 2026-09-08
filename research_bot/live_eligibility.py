@@ -187,7 +187,10 @@ class CCXTLiveAuditor:
         last_seen = None
         request_limit = min(500, target)
 
-        for _ in range(10):
+        # Exchanges impose different hard page caps (for example ~300 or ~499)
+        # even when a larger limit is requested. A short page is therefore not
+        # evidence that history ended; continue while the timestamp advances.
+        for _ in range(12):
             batch = ex.fetch_ohlcv(
                 listing.symbol,
                 timeframe=timeframe,
@@ -203,8 +206,6 @@ class CCXTLiveAuditor:
             last_seen = new_last
             cursor = new_last + 1
             if len({int(r[0]) for r in rows}) >= target:
-                break
-            if len(batch) < request_limit:
                 break
 
         if not rows:
