@@ -1,0 +1,94 @@
+name: v11-robustness-inference
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [research-v11-robustness-inference]
+    paths:
+      - "research_bot/robustness_v11.py"
+      - "research_bot/universe.py"
+      - "scripts/run_robustness_v11.py"
+      - "tests/test_robustness_v11.py"
+      - "docs/V11_ROBUSTNESS_PROTOCOL.md"
+      - ".github/workflows/v11-robustness-inference.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONHASHSEED: "0"
+
+jobs:
+  robustness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: v0.11 deterministic and regression tests
+        run: |
+          pytest -q tests/test_robustness_v11.py tests/test_oos_tournament_v10.py tests/test_live_eligibility_v09.py tests/test_v08_*.py tests/test_*v08.py
+      - name: Live eligible-universe multi-seed robustness run
+        run: |
+          python scripts/run_robustness_v11.py \
+            --exchanges kucoin,okx,mexc,gate,coinex \
+            --quotes USDT,USDC,USD \
+            --timeframe 4h \
+            --max-assets 18 \
+            --history-bars 1500 \
+            --min-history-bars 1000 \
+            --min-volume 5000000 \
+            --max-spread-bps 40 \
+            --top-quantile 0.25 \
+            --cost-bps 12 \
+            --label-hurdle-bps 12 \
+            --folds 3 \
+            --min-assets-per-timestamp 5 \
+            --seeds 11,42,101 \
+            --bootstrap-samples 300 \
+            --block-length 12 \
+            --fdr-alpha 0.10 \
+            --output artifacts/v11/robustness_inference.json
+      - name: Validate v0.11 evidence artifact
+        run: |
+          python - <<'PY'
+          import json
+          p='artifacts/v11/robustness_inference.json'
+          r=json.load(open(p))
+          z=r['robustness']
+          assert r['discovery']['listings'] > 100, r['discovery']
+          assert r['eligibility']['eligible_assets'] >= 5, r['eligibility']['eligible_assets']
+          assert not any(x.split('/')[0] in {'USDG','USDS','USDP','BUSD','GUSD','FRAX','LUSD','USDD','EURC'} for x in r['eligibility']['eligible_symbols']), r['eligibility']['eligible_symbols']
+          assert z['seed_count'] >= 3, z['seed_count']
+          assert z['multiple_testing']['method'] == 'BENJAMINI_HOCHBERG_FDR'
+          assert z['multiple_testing']['tests'] == 9, z['multiple_testing']
+          assert len(z['pairwise_bootstrap_inference']) == 9
+          assert z['promotion_status'] in {
+              'NO_MODEL_PROMOTED',
+              'PROVISIONAL_ROBUSTNESS_WINNER_STILL_NOT_EXECUTION_APPROVED',
+          }
+          required={'logistic','hgb','random_forest','momentum_baseline','ichimoku_baseline','equal_weight_market'}
+          assert required.issubset(set(z['seed_stability'])), z['seed_stability'].keys()
+          text=json.dumps(r).upper()
+          assert 'CONFIRMED_ENTRY' not in text
+          assert 'BUY_SIGNAL' not in text
+          print({
+              'eligible': r['eligibility']['eligible_assets'],
+              'best': z['provisional_best_model'],
+              'baseline': z['strongest_baseline'],
+              'promotion': z['promotion_status'],
+              'reasons': z['promotion_reasons'],
+          })
+          PY
+      - name: Upload v0.11 robustness artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: v11-robustness-inference
+          path: artifacts/v11/robustness_inference.json

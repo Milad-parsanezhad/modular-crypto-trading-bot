@@ -34,8 +34,27 @@ class EligibilityPolicy:
     min_history_bars: int = 500
     max_missing_fraction: float = 0.01
     max_abnormal_fraction: float = 0.01
+    # Explicit fiat-pegged bases are excluded from alpha ranking.  This list is
+    # intentionally conservative and reviewable; newly discovered stable bases
+    # must be added with evidence rather than inferred from ticker shape alone.
     exclude_stable_bases: tuple[str, ...] = (
-        "USDT", "USDC", "DAI", "FDUSD", "TUSD", "USDE", "PYUSD", "USD1"
+        "USDT",
+        "USDC",
+        "DAI",
+        "FDUSD",
+        "TUSD",
+        "USDE",
+        "PYUSD",
+        "USD1",
+        "USDG",
+        "USDS",
+        "USDP",
+        "BUSD",
+        "GUSD",
+        "FRAX",
+        "LUSD",
+        "USDD",
+        "EURC",
     )
     leveraged_suffixes: tuple[str, ...] = ("UP", "DOWN", "BULL", "BEAR", "3L", "3S", "5L", "5S")
 
