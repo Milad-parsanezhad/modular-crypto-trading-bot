@@ -1,0 +1,44 @@
+name: v17-thesis-evidence-integrity
+
+on:
+  push:
+    branches: ["v17-thesis-evidence-synthesis"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  thesis-evidence-integrity:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Validate v0.17 evidence ledger
+        run: pytest -q tests/test_evidence_ledger_v17.py
+      - name: Validate thesis claim contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from research_bot.evidence_ledger_v17 import CLAIM_POLICY, validate_ledger
+          validate_ledger()
+          assert CLAIM_POLICY["profitable_strategy"] is False
+          assert CLAIM_POLICY["statistically_significant_alpha"] is False
+          assert CLAIM_POLICY["live_ready"] is False
+          assert CLAIM_POLICY["real_money_execution_authorized"] is False
+          required = {
+              "docs/V17_THESIS_EVIDENCE_SYNTHESIS.md": ["NO_MODEL_PROMOTED", "NO_INCREMENTAL_DERIVATIVES_EVIDENCE", "INSUFFICIENT_FORWARD_SAMPLE"],
+              "docs/V17_SEARCH_AWARE_STATISTICAL_AUDIT.md": ["White", "Hansen", "Deflated Sharpe", "DATA_INSUFFICIENT_FOR_SEARCH_AWARE_INFERENCE"],
+              "docs/CHAPTER4_RESULTS_MASTER_DRAFT.md": ["v0.10", "v0.11", "v0.12", "v0.16", "real-money LIVE readiness remain unproven"],
+          }
+          for path, needles in required.items():
+              text = Path(path).read_text(encoding="utf-8")
+              missing = [x for x in needles if x not in text]
+              assert not missing, (path, missing)
+          print("v0.17 thesis evidence contract validated")
+          PY
