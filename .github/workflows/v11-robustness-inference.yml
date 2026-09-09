@@ -6,6 +6,7 @@ on:
     branches: [research-v11-robustness-inference]
     paths:
       - "research_bot/robustness_v11.py"
+      - "research_bot/universe.py"
       - "scripts/run_robustness_v11.py"
       - "tests/test_robustness_v11.py"
       - "docs/V11_ROBUSTNESS_PROTOCOL.md"
@@ -13,6 +14,9 @@ on:
 
 permissions:
   contents: read
+
+env:
+  PYTHONHASHSEED: "0"
 
 jobs:
   robustness:
@@ -61,6 +65,7 @@ jobs:
           z=r['robustness']
           assert r['discovery']['listings'] > 100, r['discovery']
           assert r['eligibility']['eligible_assets'] >= 5, r['eligibility']['eligible_assets']
+          assert not any(x.split('/')[0] in {'USDG','USDS','USDP','BUSD','GUSD','FRAX','LUSD','USDD','EURC'} for x in r['eligibility']['eligible_symbols']), r['eligibility']['eligible_symbols']
           assert z['seed_count'] >= 3, z['seed_count']
           assert z['multiple_testing']['method'] == 'BENJAMINI_HOCHBERG_FDR'
           assert z['multiple_testing']['tests'] == 9, z['multiple_testing']
