@@ -1,0 +1,97 @@
+name: v16-formal-forward-defense
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "35 */4 * * *"
+  push:
+    branches:
+      - main
+      - v16-formal-forward-defense
+    paths:
+      - "research_bot/formal_forward_v16.py"
+      - "scripts/download_v15_artifacts.py"
+      - "scripts/build_defense_package_v16.py"
+      - "tests/test_formal_forward_v16.py"
+      - ".github/workflows/v16-formal-forward-defense.yml"
+      - "docs/V16_FORMAL_FORWARD_DEFENSE_PROTOCOL.md"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  formal-forward-defense:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Deterministic v0.16 tests
+        run: |
+          pytest -q tests/test_formal_forward_v16.py tests/test_forward_evidence_v15.py
+
+      - name: Collect immutable v0.15 evidence artifacts
+        run: |
+          python scripts/download_v15_artifacts.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --output-dir artifacts/v16_input \
+            --max-artifacts 120
+
+      - name: Build formal forward evaluation and defense package
+        run: |
+          python scripts/build_defense_package_v16.py \
+            --input-dir artifacts/v16_input \
+            --output-dir artifacts/v16_defense
+
+      - name: Validate fail-closed defense contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("artifacts/v16_defense/v16_formal_forward_evaluation.json")
+          d = json.loads(p.read_text())
+          assert d["live_promotion"] == "PROHIBITED", d
+          assert d["metric_policy"]["alpha_claim_authorized"] is False, d
+          assert d["metric_policy"]["profitability_claim_authorized"] is False, d
+          assert d["source_contract"]["safety_all_snapshots"] is True, d
+          required = {
+              "chapter4_forward_results.md",
+              "defense_summary.md",
+              "defense_manifest.json",
+              "equity_curve.svg",
+              "drawdown_curve.svg",
+              "sample_growth.svg",
+              "forward_timeline.csv",
+              "v16_formal_forward_evaluation.json",
+          }
+          actual = {x.name for x in Path("artifacts/v16_defense").iterdir() if x.is_file()}
+          assert required <= actual, (required - actual)
+          print({
+              "formal_state": d["formal_state"],
+              "snapshots": d["source_contract"]["snapshot_count"],
+              "observations": d["sample_progress"]["observations_total"],
+              "fills": d["sample_progress"]["fills_total"],
+              "sample_gate": d["sample_progress"]["preregistered_gate_passed"],
+              "live_promotion": d["live_promotion"],
+          })
+          PY
+
+      - name: Upload v0.16 defense artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: v16-formal-forward-defense-${{ github.run_number }}
+          path: artifacts/v16_defense/
+          if-no-files-found: error
+          retention-days: 90
