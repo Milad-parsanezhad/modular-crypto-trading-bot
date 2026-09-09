@@ -1,0 +1,89 @@
+name: v12-derivatives-external-holdout
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [research-v12-derivatives-external-holdout]
+    paths:
+      - "research_bot/derivatives_ablation_v12.py"
+      - "scripts/run_derivatives_holdout_v12.py"
+      - "tests/test_derivatives_ablation_v12.py"
+      - "docs/V12_DERIVATIVES_EXTERNAL_HOLDOUT_PROTOCOL.md"
+      - ".github/workflows/v12-derivatives-external-holdout.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  derivatives-holdout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: v0.12 deterministic and regression tests
+        run: |
+          pytest -q \
+            tests/test_derivatives_ablation_v12.py \
+            tests/test_robustness_v11.py \
+            tests/test_oos_tournament_v10.py \
+            tests/test_live_eligibility_v09.py \
+            tests/test_v08_*.py \
+            tests/test_*v08.py
+      - name: External USD-M derivatives holdout
+        run: |
+          python scripts/run_derivatives_holdout_v12.py \
+            --symbols BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT,XRPUSDT,DOGEUSDT,ADAUSDT,LINKUSDT,LTCUSDT,BCHUSDT,DOTUSDT,AVAXUSDT \
+            --start-month 2025-09 \
+            --oi-days 300 \
+            --max-workers 3 \
+            --holdout-fraction 0.25 \
+            --top-quantile 0.25 \
+            --cost-bps 8 \
+            --min-assets 6 \
+            --seeds 11,42,101 \
+            --bootstrap-samples 300 \
+            --block-length 9 \
+            --output artifacts/v12/derivatives_external_holdout.json
+      - name: Validate v0.12 evidence artifact
+        run: |
+          python - <<'PY'
+          import json
+          p='artifacts/v12/derivatives_external_holdout.json'
+          r=json.load(open(p))
+          z=r['ablation']
+          assert r['research_status']=='V12_EXTERNAL_DERIVATIVES_HOLDOUT_NOT_TRADING_SIGNAL'
+          assert len(r['usable_symbols']) >= 6, r['usable_symbols']
+          assert z['final_holdout_start'] > z['development_end']
+          assert z['feature_family_availability_rows']['derivatives'] > 0
+          assert len(z['holdout_summary']) == 8
+          assert z['multiple_testing']['method']=='BENJAMINI_HOCHBERG_FDR'
+          assert z['multiple_testing']['planned_tests']==10
+          assert z['multiple_testing']['realized_tests']==10
+          assert z['promotion_status'] in {
+              'NO_INCREMENTAL_DERIVATIVES_EVIDENCE',
+              'PROVISIONAL_DERIVATIVES_EDGE_NEEDS_FORWARD_PAPER_REPLICATION',
+          }
+          text=json.dumps(r).upper()
+          assert 'BUY_SIGNAL' not in text
+          assert 'CONFIRMED_ENTRY' not in text
+          print({
+              'usable':len(r['usable_symbols']),
+              'holdout':[z['final_holdout_start'],z['final_holdout_end']],
+              'best_full_model':z['provisional_best_full_model'],
+              'promotion':z['promotion_status'],
+              'reasons':z['promotion_reasons'],
+          })
+          PY
+      - name: Upload v0.12 evidence artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: v12-derivatives-external-holdout
+          path: artifacts/v12/derivatives_external_holdout.json
