@@ -10,6 +10,7 @@ from research_bot.robustness_v11 import (
     moving_block_bootstrap_paired,
     run_robustness_v11,
 )
+from research_bot.universe import EligibilityPolicy, MarketListing, evaluate_listing
 
 
 def test_benjamini_hochberg_known_ordering():
@@ -37,6 +38,33 @@ def test_moving_block_bootstrap_detects_large_paired_edge():
     assert out["observed_mean_return_diff"] > 0
     assert out["mean_return_diff_ci"][0] > 0
     assert out["one_sided_p_mean_edge"] < 0.05
+
+
+def test_usdg_and_other_known_stable_bases_are_rejected():
+    policy = EligibilityPolicy(
+        min_volume_24h_quote=1.0,
+        max_spread_bps=100.0,
+        min_history_bars=1,
+        max_missing_fraction=1.0,
+        max_abnormal_fraction=1.0,
+    )
+    for base in ("USDG", "USDS", "USDP", "BUSD", "GUSD", "FRAX", "LUSD", "USDD", "EURC"):
+        listing = MarketListing(
+            exchange="fixture",
+            symbol=f"{base}/USDT",
+            base=base,
+            quote="USDT",
+            market_type="spot",
+            active=True,
+            volume_24h_quote=10_000_000.0,
+            spread_bps=1.0,
+            history_bars=1000,
+            missing_fraction=0.0,
+            abnormal_fraction=0.0,
+        )
+        result = evaluate_listing(listing, policy)
+        assert not result.eligible, base
+        assert "STABLECOIN_BASE" in result.reasons, (base, result.reasons)
 
 
 def _bars(seed: int, asset: int, n: int = 360) -> pd.DataFrame:
