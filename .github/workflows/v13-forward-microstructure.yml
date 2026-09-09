@@ -1,0 +1,60 @@
+name: v13-forward-microstructure
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "35 2 * * *"
+  push:
+    branches: [finalization-v13-v1]
+    paths:
+      - "research_bot/microstructure_v13.py"
+      - "scripts/run_microstructure_forward_v13.py"
+      - "tests/test_microstructure_v13.py"
+      - ".github/workflows/v13-forward-microstructure.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  forward-microstructure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Deterministic v0.13 tests
+        run: pytest -q tests/test_microstructure_v13.py
+      - name: Collect post-v0.12 forward microstructure evidence
+        run: |
+          python scripts/run_microstructure_forward_v13.py \
+            --symbols BTCUSDT,ETHUSDT \
+            --start-date 2026-09-01 \
+            --interval 1h \
+            --output-dir artifacts/v13
+      - name: Validate evidence contract
+        run: |
+          python - <<'PY'
+          import json
+          p="artifacts/v13/v13_forward_microstructure_report.json"
+          r=json.load(open(p))
+          assert r["research_status"]=="V13_FORWARD_MICROSTRUCTURE_COLLECTION_NOT_TRADING_SIGNAL"
+          assert r["promotion_status"]=="NO_MODEL_PROMOTION_ATTEMPTED"
+          assert r["rows"] > 0, r
+          assert r["liquidation_history"]=="DATA_UNAVAILABLE"
+          text=json.dumps(r).upper()
+          assert "BUY_SIGNAL" not in text
+          assert "CONFIRMED_ENTRY" not in text
+          print({"rows":r["rows"],"status":r["window_status"],"symbols":r["symbols"]})
+          PY
+      - name: Upload v0.13 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: v13-forward-microstructure
+          path: artifacts/v13/

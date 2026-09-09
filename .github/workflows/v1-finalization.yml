@@ -1,0 +1,61 @@
+name: v1-finalization
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [finalization-v13-v1]
+    paths:
+      - "research_bot/persistence.py"
+      - "research_bot/coinex_depth.py"
+      - "research_bot/forward_paper_v14.py"
+      - "research_bot/service.py"
+      - "scripts/build_release_manifest_v1.py"
+      - "tests/test_forward_paper_v14.py"
+      - "tests/test_service_v1.py"
+      - "pyproject.toml"
+      - ".github/workflows/v1-finalization.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  finalization:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Compile
+        run: python -m compileall -q research_bot scripts
+      - name: Finalization regression tests
+        run: |
+          pytest -q \
+            tests/test_forward_paper_v14.py \
+            tests/test_service_v1.py \
+            tests/test_v08_service.py \
+            tests/test_v08_research_core.py \
+            tests/test_robustness_v11.py \
+            tests/test_derivatives_ablation_v12.py
+      - name: Build release evidence manifest
+        run: python scripts/build_release_manifest_v1.py --output artifacts/v1/release_manifest.json
+      - name: Validate fail-closed execution
+        run: |
+          python - <<'PY'
+          import json
+          r=json.load(open("artifacts/v1/release_manifest.json"))
+          assert r["execution"]["live"]=="DISABLED_FAIL_CLOSED"
+          assert r["forward_paper"]["label"]=="HYPOTHESIS_SHADOW_NOT_VALIDATED_ALPHA"
+          print({"release":r["release"],"live":r["execution"]["live"]})
+          PY
+      - name: Upload release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v1-finalization-evidence
+          path: artifacts/v1/
