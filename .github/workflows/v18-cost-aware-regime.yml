@@ -24,6 +24,8 @@ jobs:
         run: pytest -q tests/test_cost_regime_v18.py tests/test_evidence_ledger_v17.py tests/test_trial_registry_v17.py
       - name: Run v0.18 live public-data experiments
         run: python scripts/run_v18_cost_regime.py --bars 1800 --output artifacts/v18/v18_cost_regime_results.json
+      - name: Render v0.18 results
+        run: python scripts/render_v18_results.py --input artifacts/v18/v18_cost_regime_results.json --output artifacts/v18/V18_RESULTS.md
       - name: Validate fail-closed result contract
         run: |
           python - <<'PY'
@@ -36,15 +38,15 @@ jobs:
           assert z['experiment_b']['decision'] in {'EXTERNAL_REGIME_REPLICATION_SUPPORTED','NO_EXTERNAL_REGIME_REPLICATION_EVIDENCE'}
           assert z['combined_decision']['live_execution_authorized'] is False
           assert z['combined_decision']['paper_strategy_promotion_authorized'] is False
-          print(json.dumps({
-              'A': z['experiment_a']['decision'],
-              'B': z['experiment_b']['decision'],
-              'external': z['experiment_b_external_source'],
-          }, indent=2))
+          md=Path('artifacts/v18/V18_RESULTS.md').read_text(encoding='utf-8')
+          assert 'no PAPER replacement or LIVE authorization' in md
+          print(json.dumps({'A': z['experiment_a']['decision'],'B': z['experiment_b']['decision'],'external': z['experiment_b_external_source']}, indent=2))
           PY
       - name: Upload v0.18 evidence
         uses: actions/upload-artifact@v4
         with:
           name: v18-cost-aware-regime-results
-          path: artifacts/v18/v18_cost_regime_results.json
+          path: |
+            artifacts/v18/v18_cost_regime_results.json
+            artifacts/v18/V18_RESULTS.md
           retention-days: 90
