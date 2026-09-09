@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta, timezone
-from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -32,7 +31,7 @@ class MicrostructureForwardConfig:
 def _date_range(start_date: str, end_date: str | None) -> list[date]:
     start = pd.Timestamp(start_date).date()
     if end_date is None:
-        end = (datetime.now(timezone.utc).date() - timedelta(days=1))
+        end = datetime.now(timezone.utc).date() - timedelta(days=1)
     else:
         end = pd.Timestamp(end_date).date()
     if end < start:
@@ -40,14 +39,27 @@ def _date_range(start_date: str, end_date: str | None) -> list[date]:
     return [x.date() for x in pd.date_range(start, end, freq="D")]
 
 
-def _parse_kline(payload: bytes, *, market: str) -> pd.DataFrame:
+def _parse_kline(payload: bytes, *, market: str, interval: str) -> pd.DataFrame:
+    """Parse spot/futures archives onto one canonical completed-bar clock.
+
+    Binance spot archives moved to microsecond timestamps while USD-M archives
+    can use a different raw close-time convention.  Joining raw close_time
+    values therefore created sub-second mismatches.  The open time is the
+    stable event anchor, so the decision timestamp is defined as
+    ``open_time + interval`` for both venues.  This is point-in-time safe: the
+    bar is not considered available before its scheduled close boundary.
+    """
     raw = _read_zip(payload)
     if raw.shape[1] < 11:
         raise RuntimeError(f"Unexpected {market} kline schema: {raw.shape}")
     raw = raw.iloc[:, : min(len(KLINE_COLUMNS), raw.shape[1])].copy()
     raw.columns = KLINE_COLUMNS[: raw.shape[1]]
     raw["timestamp_open"] = _utc(raw["open_time"])
-    raw["timestamp"] = _utc(raw["close_time"]) + pd.Timedelta(microseconds=1)
+    try:
+        bar_delta = pd.Timedelta(interval)
+    except Exception as exc:
+        raise ValueError(f"Unsupported pandas interval: {interval}") from exc
+    raw["timestamp"] = raw["timestamp_open"] + bar_delta
     for col in ("open", "high", "low", "close", "volume", "quote_volume", "taker_buy_quote"):
         if col in raw:
             raw[col] = pd.to_numeric(raw[col], errors="coerce")
@@ -67,8 +79,8 @@ def fetch_daily_klines(
     """Download point-in-time daily Binance Vision klines.
 
     This collector is intentionally limited to public archives and never uses
-    private credentials. The decision timestamp is the completed candle close,
-    not the candle open.
+    private credentials. The decision timestamp is the canonical completed
+    candle boundary derived from open_time + interval.
     """
     symbol = symbol.upper()
     if market not in {"spot", "um"}:
@@ -86,7 +98,7 @@ def fetch_daily_klines(
             files.append({"date": ds, "status": "missing"})
             continue
         verified = _verify(url, payload, verify_checksum)
-        frame = _parse_kline(payload, market=market)
+        frame = _parse_kline(payload, market=market, interval=interval)
         frames.append(frame)
         files.append({"date": ds, "status": "ok", "rows": int(len(frame)), "checksum_verified": verified})
     if not frames:
