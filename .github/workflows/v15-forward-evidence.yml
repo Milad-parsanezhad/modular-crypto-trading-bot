@@ -1,0 +1,76 @@
+name: v15-forward-evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - v15-forward-evidence-defense
+    paths:
+      - "research_bot/forward_evidence_v15.py"
+      - "scripts/export_production_evidence_v15.py"
+      - "tests/test_forward_evidence_v15.py"
+      - ".github/workflows/v15-forward-evidence.yml"
+      - "docs/V15_FORWARD_EVIDENCE_PROTOCOL.md"
+  schedule:
+    - cron: "17 */4 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  forward-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BOT_PRODUCTION_BASE_URL: https://thesis-trading-bot-v08-production.up.railway.app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Deterministic v0.15 tests
+        run: pytest -q tests/test_forward_evidence_v15.py
+
+      - name: Export production forward evidence
+        run: |
+          python scripts/export_production_evidence_v15.py \
+            --base-url "$BOT_PRODUCTION_BASE_URL" \
+            --output-dir artifacts/v15_forward_evidence \
+            --limit 500
+
+      - name: Validate evidence contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("artifacts/v15_forward_evidence/v15_forward_evidence.json")
+          d = json.loads(p.read_text())
+          assert d["safety_contract"]["ok"] is True, d["safety_contract"]
+          assert d["scientific_state"]["live_promotion"] == "PROHIBITED"
+          assert d["service"]["execution_mode"] == "PAPER"
+          assert d["service"]["backend"] == "postgres"
+          print({
+              "evidence_state": d["scientific_state"]["evidence_state"],
+              "observations": d["forward_counts"]["observations_total"],
+              "fills": d["forward_counts"]["fills_total"],
+              "equity_points": d["forward_counts"]["equity_points_total"],
+              "return": d["paper_account"]["cumulative_return"],
+              "drawdown": d["paper_account"]["current_drawdown"],
+          })
+          PY
+
+      - name: Upload v0.15 evidence artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: v15-forward-evidence-${{ github.run_number }}
+          path: artifacts/v15_forward_evidence/
+          if-no-files-found: error
+          retention-days: 90
