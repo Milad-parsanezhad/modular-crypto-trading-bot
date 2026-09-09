@@ -1,0 +1,91 @@
+name: v1-production-smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ops-v1-production-smoke]
+    paths:
+      - ".github/workflows/v1-production-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASE_URL: https://thesis-trading-bot-v08-production.up.railway.app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Health, research and persistence contract
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 "$BASE_URL/health" -o /tmp/health.json
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 "$BASE_URL/paper/status" -o /tmp/paper.json
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 "$BASE_URL/research/status" -o /tmp/research.json
+          python - <<'PY'
+          import json
+          h=json.load(open('/tmp/health.json'))
+          p=json.load(open('/tmp/paper.json'))
+          r=json.load(open('/tmp/research.json'))
+          assert h['status']=='ok', h
+          assert h['version']=='1.0.0-rc1', h
+          assert h['live_execution'] is False, h
+          assert h['forward_paper_enabled'] is True, h
+          assert p['status']=='RUNNING', p
+          assert p['paper_execution_enabled'] is True, p
+          assert p['live_execution'] is False, p
+          assert p['store']['backend']=='postgres', p
+          assert r['latest_research_decision']=='NO_INCREMENTAL_DERIVATIVES_EVIDENCE', r
+          assert r['forward_paper_label']=='HYPOTHESIS_SHADOW_NOT_VALIDATED_ALPHA', r
+          print({
+              'health':h['status'],
+              'version':h['version'],
+              'paper':p['status'],
+              'backend':p['store']['backend'],
+              'observations':p['store']['observations'],
+              'fills':p['store']['fills'],
+              'equity_points':p['store']['equity_points'],
+          })
+          PY
+
+      - name: Trigger one safe forward-paper cycle
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 2 --retry-delay 2 --max-time 120 -X POST "$BASE_URL/paper/run-once" -o /tmp/runonce.json
+          cat /tmp/runonce.json
+          python - <<'PY'
+          import json
+          r=json.load(open('/tmp/runonce.json'))
+          assert isinstance(r, dict), r
+          assert r.get('status') not in {'DISABLED','ERROR'}, r
+          text=json.dumps(r).upper()
+          assert 'BUY_SIGNAL' not in text, r
+          assert 'CONFIRMED_ENTRY' not in text, r
+          print({'paper_cycle_keys': sorted(r.keys())})
+          PY
+
+      - name: Verify PostgreSQL evidence after cycle
+        run: |
+          set -euo pipefail
+          sleep 2
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 "$BASE_URL/paper/status" -o /tmp/paper_after.json
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 "$BASE_URL/paper/observations?limit=10" -o /tmp/observations.json
+          python - <<'PY'
+          import json
+          p=json.load(open('/tmp/paper_after.json'))
+          o=json.load(open('/tmp/observations.json'))
+          assert p['store']['backend']=='postgres', p
+          assert p['live_execution'] is False, p
+          assert p['status']=='RUNNING', p
+          assert p['store']['observations'] >= 1, p
+          assert len(o.get('items', [])) >= 1, o
+          print({
+              'observations':p['store']['observations'],
+              'fills':p['store']['fills'],
+              'equity_points':p['store']['equity_points'],
+              'last_cycle_error':p.get('last_cycle_error'),
+          })
+          PY
