@@ -1,0 +1,20 @@
+name: v17-strategy-lab
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  causal-strategy-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Test v0.17 causal strategy and paper adapter
+        run: pytest -q tests/test_strategy_lab_v17.py tests/test_binance_spot_archive_v17.py tests/test_forward_candidate_v17.py

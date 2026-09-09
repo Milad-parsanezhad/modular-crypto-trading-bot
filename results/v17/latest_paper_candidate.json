@@ -1,0 +1,29 @@
+{
+  "research_status": "FORWARD_PAPER_CANDIDATE_NOT_LIVE",
+  "symbol": "BTCUSDT",
+  "decision_at_closed_bar": {
+    "strategy_version": "S6_BREAKOUT_V17",
+    "timestamp": "2025-12-31T20:00:00+00:00",
+    "action": "NO_TRADE",
+    "reference_price": 87648.22,
+    "stop_reference": 87157.07,
+    "breakout_reference": 90406.08,
+    "risk_weight": 0.26704989337416546,
+    "reasons": [
+      "NO_20_BAR_BREAKOUT",
+      "EMA200_SLOPE_NOT_POSITIVE"
+    ],
+    "limits": {
+      "risk_per_trade": 0.0025,
+      "max_asset_weight": 0.35,
+      "max_portfolio_gross": 0.7,
+      "max_drawdown": 0.05,
+      "max_spread_bps": 35.0,
+      "max_slippage_bps": 25.0,
+      "cooling_bars": 42
+    },
+    "paper_only": true,
+    "live_execution": false
+  },
+  "next_step": "Record or simulate a fill at the next bar open; never submit a live order."
+}

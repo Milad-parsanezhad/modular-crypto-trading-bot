@@ -108,3 +108,15 @@ Predictive models never call an exchange directly. Signals must pass through cos
 - add point-in-time derivatives/on-chain/whale/fundamental connectors only where historical availability is trustworthy,
 - stabilize forward paper execution and reconciliation,
 - build the research/dashboard layer after backend artifacts are stable.
+
+## v0.17 frozen Ichimoku Strategy Lab
+
+The repository now includes a causal 4H comparison of B0, S1-S6, IRCP, C1 and C2 plus the IRGC-S event/meta-label candidate. Run:
+
+```bash
+pytest -q tests/test_strategy_lab_v17.py tests/test_binance_spot_archive_v17.py tests/test_forward_candidate_v17.py
+PYTHONPATH=. python scripts/run_strategy_lab_v17.py --archive-cache data/cache --bars 20000 --output-dir artifacts/v17-strategy-lab
+PYTHONPATH=. python scripts/run_forward_candidate_v17.py --archive-cache data/cache --symbol BTCUSDT
+```
+
+See `docs/V17_ICHIMOKU_STRATEGY_LAB_PROTOCOL.md` and the dated v0.17 results report. The S6 adapter emits observation-only paper candidates with a 0.25% risk budget, 35% per-asset cap, 70% portfolio-gross cap and 5% drawdown kill switch. Results remain research-only and cannot enable live execution.

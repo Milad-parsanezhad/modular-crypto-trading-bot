@@ -1,4 +1,5 @@
 artifacts/
+deliverables/
 __pycache__/
 .pytest_cache/
 *.pyc
