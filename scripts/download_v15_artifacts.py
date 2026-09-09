@@ -5,40 +5,43 @@ import io
 import json
 import os
 from pathlib import Path
-import urllib.request
 import zipfile
+
+import requests
 
 
 API = "https://api.github.com"
 PREFIX = "v15-forward-evidence-"
 
 
+def _headers(token: str) -> dict[str, str]:
+    return {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "modular-crypto-trading-bot-v16",
+    }
+
+
 def _request_json(url: str, token: str) -> dict:
-    req = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "modular-crypto-trading-bot-v16",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    resp = requests.get(url, headers=_headers(token), timeout=60)
+    resp.raise_for_status()
+    return resp.json()
 
 
 def _request_bytes(url: str, token: str) -> bytes:
-    req = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "modular-crypto-trading-bot-v16",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        return resp.read()
+    # GitHub artifact downloads first return a short-lived signed redirect URL.
+    # Do not forward the GitHub bearer token to the object-storage host.
+    first = requests.get(url, headers=_headers(token), timeout=60, allow_redirects=False)
+    if first.status_code in {301, 302, 303, 307, 308}:
+        location = first.headers.get("Location")
+        if not location:
+            raise RuntimeError("artifact redirect did not include Location")
+        final = requests.get(location, timeout=120)
+        final.raise_for_status()
+        return final.content
+    first.raise_for_status()
+    return first.content
 
 
 def list_v15_artifacts(repo: str, token: str, max_artifacts: int = 120) -> list[dict]:
