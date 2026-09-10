@@ -23,6 +23,8 @@ For repository acquisition and branch preparation:
 5. Interactive credential prompts are disabled with `GIT_TERMINAL_PROMPT=0` so a hidden prompt cannot create an apparent hang.
 6. A missing branch is reported as missing; it is never silently created from the wrong base.
 7. A dirty existing checkout is never hard-reset or overwritten by the recovery tool.
+8. A failed clone's entire partial destination is removed before fallback because stale `.git` state or worktree files can corrupt recovery. This cleanup is permitted only because that destination was created by the failed clone in the same call; pre-existing non-repository user directories are never deleted.
+9. An optional immutable `expected_commit` can be supplied. A checkout is `READY` only when `git rev-parse HEAD` exactly equals that SHA.
 
 ## Preferred decision tree
 
@@ -32,7 +34,7 @@ Reuse it. Do not call `create branch` again.
 
 ### Local checkout exists and is clean
 
-Fetch the exact remote ref at depth 1 and check out/reset only the branch ref, not arbitrary user files.
+Fetch the exact remote ref at depth 1 and check it out. If an expected commit SHA was supplied, verify HEAD before returning success.
 
 ### No local checkout
 
@@ -40,7 +42,7 @@ Attempt one shallow single-branch clone. If it fails or times out, immediately c
 
 ### Fallback method
 
-Initialize an empty repository, add the origin, shallow-fetch exactly `refs/heads/<branch>`, then check out that fetched ref.
+Delete only the partial checkout created by the failed clone, initialize an empty repository, add origin, shallow-fetch exactly `refs/heads/<branch>`, check out that ref, then verify the immutable expected SHA when provided.
 
 ### Remote branch missing or remote unreachable
 
@@ -48,7 +50,7 @@ Stop with a diagnostic result. Branch creation is a separate explicit action and
 
 ## Machine-readable audit
 
-`scripts/research_branch_bootstrap.py` can write JSONL audit events. Each event records stage, command, return code, elapsed seconds and whether a timeout occurred. Credentials are never written by the recovery module.
+`scripts/research_branch_bootstrap.py` writes optional JSONL audit events. Each event records stage, command, return code, elapsed seconds and timeout state. Credentials are never written by the recovery module. The CLI also accepts `--expected-commit`.
 
 Example:
 
@@ -59,21 +61,34 @@ python scripts/research_branch_bootstrap.py \
   /tmp/research-checkout \
   --timeout-seconds 60 \
   --max-attempts 2 \
+  --expected-commit <IMMUTABLE_SHA> \
   --audit-log /tmp/research-checkout-audit.jsonl
 ```
 
 ## CI behavior
 
-`.github/workflows/v23r-repo-recovery-guard.yml` gives the normal `actions/checkout` step a one-minute timeout and `continue-on-error`. If checkout fails, the workflow switches to an exact-ref fetch fallback instead of rerunning the same checkout step. A local synthetic Git test suite verifies direct bootstrap, idempotent reuse, missing-branch failure, dirty-worktree preservation and timeout behavior.
+`.github/workflows/v23r-repo-recovery-guard.yml` now implements all of the following:
+
+- checks out the immutable PR-head/push SHA rather than GitHub's synthetic pull-request merge ref;
+- gives the primary checkout one minute and immediately changes method if it fails or resolves the wrong SHA;
+- wipes the complete ephemeral partial workspace before fallback so stale worktree state cannot leak into recovery;
+- fetches the exact research branch ref and proves it resolves to the event SHA;
+- records checkout provenance as an artifact;
+- runs the local recovery unit suite;
+- performs a forced-failure integration test by intercepting exactly the direct `git clone`, making it fail, and proving that the independent `git init + fetch + checkout` fallback recovers the correct SHA and file content;
+- uses current Node-24-generation GitHub actions and disables the multi-gigabyte shared pip cache for this lightweight guard.
+
+A normal successful primary checkout does not exercise fallback, so the forced-failure integration test is mandatory evidence that the recovery path itself works.
 
 ## General research automation rule
 
-The same operational principle should apply beyond Git:
+The same operational principle applies beyond Git:
 
 - identify a repeated failure signature;
 - stop identical retries quickly;
 - preserve intermediate evidence/logs;
 - change method or reduce the problem to a smaller diagnostic test;
-- only resume the expensive research/training job after the blocking invariant passes.
+- bind every expensive research run to an immutable source SHA;
+- only resume training after dependency, upstream-evidence and dataset invariants pass.
 
 This is the default failure policy for subsequent ML, deep-learning and research workflows in this repository.
