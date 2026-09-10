@@ -16,6 +16,7 @@ from research_bot.forward_microstructure_v19 import (
     build_snapshot,
     observation_from_orderbook_and_trades,
 )
+from research_bot.integrity_v19 import finalize_payload_hash
 from research_bot.venue_adapter_v19 import normalized_orderbook_limit
 
 
@@ -135,6 +136,7 @@ def main() -> None:
     snapshot["provider_failures"] = failures
     snapshot["raw_observation_count"] = len(observations)
     snapshot["collection_rule"] = "prospective_only_no_backfill_no_signal"
+    finalize_payload_hash(snapshot, "snapshot_sha256")
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
