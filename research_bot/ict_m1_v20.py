@@ -24,6 +24,11 @@ from .ichimoku_advanced import add_ichimoku_state
 OriginVariant = Literal["sweep_origin", "opposing_candle", "fvg"]
 IchimokuGate = Literal["off", "trend"]
 ORIGIN_VARIANTS: tuple[OriginVariant, ...] = ("sweep_origin", "opposing_candle", "fvg")
+REPORTING_PERIODS = (
+    ("development", "2020-01-01 00:00:00+00:00", "2023-12-31 23:59:59+00:00"),
+    ("validation", "2024-01-01 00:00:00+00:00", "2024-12-31 23:59:59+00:00"),
+    ("final_test", "2025-01-01 00:00:00+00:00", "2025-12-31 23:59:59+00:00"),
+)
 
 
 @dataclass(frozen=True)
