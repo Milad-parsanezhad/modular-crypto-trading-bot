@@ -118,7 +118,7 @@ def build_scientific_liquidity_features(
     f["distance_last_swing_low_atr"] = (f["close"] - f["last_swing_low"]) / atr
     f["distance_round_level_atr"] = (f["close"] - f["round_level"]).abs() / atr
 
-    for rule, prefix, label in (("1D", "prev_day", "day"), ("7D", "prev_week", "week"), ("MS", "prev_month", "month")):
+    for rule, prefix in (("1D", "prev_day"), ("7D", "prev_week"), ("MS", "prev_month")):
         lev = _asof_period_levels(f, rule, prefix)
         f[f"{prefix}_high"] = lev[f"{prefix}_high"].to_numpy()
         f[f"{prefix}_low"] = lev[f"{prefix}_low"].to_numpy()
@@ -140,13 +140,23 @@ def build_scientific_liquidity_features(
     atr_mean = f["atr"].rolling(cfg.compression_window, min_periods=max(5, cfg.compression_window // 2)).mean().replace(0, np.nan)
     f["range_compression_ratio"] = f["atr"] / atr_mean
 
-    # Course-hypothesis layer: algorithmic labels only, never institutional-intent truth.
-    prior_high = f["last_swing_high"].shift(1)
-    prior_low = f["last_swing_low"].shift(1)
-    prev_high = prior_high.shift(1)
-    prev_low = prior_low.shift(1)
-    f["equal_high_proxy"] = ((prior_high - prev_high).abs() <= cfg.equal_level_atr_tolerance * atr).astype(float)
-    f["equal_low_proxy"] = ((prior_low - prev_low).abs() <= cfg.equal_level_atr_tolerance * atr).astype(float)
+    # Course-hypothesis layer: compare newly confirmed distinct swing levels only.
+    # This avoids the common error of labelling every bar between unchanged ffilled
+    # swing levels as an equal-high/equal-low event.
+    lsh = f["last_swing_high"]
+    lsl = f["last_swing_low"]
+    new_high = lsh.notna() & lsh.ne(lsh.shift(1))
+    new_low = lsl.notna() & lsl.ne(lsl.shift(1))
+    high_events = lsh.where(new_high)
+    low_events = lsl.where(new_low)
+    previous_distinct_high = high_events.ffill().shift(1)
+    previous_distinct_low = low_events.ffill().shift(1)
+    f["equal_high_proxy"] = (
+        new_high & ((lsh - previous_distinct_high).abs() <= cfg.equal_level_atr_tolerance * atr)
+    ).astype(float)
+    f["equal_low_proxy"] = (
+        new_low & ((lsl - previous_distinct_low).abs() <= cfg.equal_level_atr_tolerance * atr)
+    ).astype(float)
 
     # Range boundary excludes the current bar, preserving causality.
     hi20 = f["high"].shift(1).rolling(20, min_periods=20).max()
