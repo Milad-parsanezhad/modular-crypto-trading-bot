@@ -20,9 +20,17 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - name: Run deterministic audit tests
+      - name: Run deterministic audit and maturity-gate tests
         run: |
-          pytest -q tests/test_audit_v19.py tests/test_forward_microstructure_v19.py tests/test_v19_collector_helpers.py tests/test_forward_paper_v14.py tests/test_cost_regime_v18.py tests/test_evidence_ledger_v17.py tests/test_trial_registry_v17.py
+          pytest -q \
+            tests/test_audit_v19.py \
+            tests/test_forward_microstructure_v19.py \
+            tests/test_v19_collector_helpers.py \
+            tests/test_microstructure_quality_v19.py \
+            tests/test_forward_paper_v14.py \
+            tests/test_cost_regime_v18.py \
+            tests/test_evidence_ledger_v17.py \
+            tests/test_trial_registry_v17.py
       - name: Run audit-corrected public-data research
         run: |
           python scripts/run_v19_audit.py --bars 1800 --output artifacts/v19/v19_audit.json --markdown artifacts/v19/V19_AUDIT_RESULTS.md
@@ -37,6 +45,7 @@ jobs:
           import json
           from pathlib import Path
           from research_bot.integrity_v19 import payload_sha256
+          from research_bot.microstructure_quality_v19 import evaluate_quality_gate
 
           audit=json.loads(Path('artifacts/v19/v19_audit.json').read_text())
           snap=json.loads(Path('artifacts/v19/forward_microstructure_snapshot.json').read_text())
@@ -63,6 +72,16 @@ jobs:
                   assert row['venue_clock_skew_seconds'] <= snap['config']['max_venue_clock_skew_seconds']
                   assert row['trade_window_seconds']==60
                   assert row['trade_side_semantics']=='exchange_reported_side_unverified_aggressor'
+
+          # A single smoke snapshot can never mature the 7-day research gate.
+          q=evaluate_quality_gate(
+              [snap],
+              pilot_start_at=snap['generated_at'],
+              as_of=snap['generated_at'],
+          )
+          assert q['decision']=='GATE_Q_NOT_MATURE'
+          assert q['feature_predictive_modeling_authorized'] is False
+          assert q['live_execution_authorized'] is False
           print('v0.19 fail-closed fixed-window contract validated')
           PY
       - name: Upload audit evidence
