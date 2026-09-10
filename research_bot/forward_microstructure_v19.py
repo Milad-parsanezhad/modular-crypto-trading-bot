@@ -84,6 +84,8 @@ class V19MicrostructureConfig:
 
 def _utc_timestamp(value) -> pd.Timestamp:
     ts = pd.Timestamp(value)
+    if pd.isna(ts):
+        raise ValueError("invalid timestamp")
     if ts.tzinfo is None:
         ts = ts.tz_localize("UTC")
     else:
@@ -111,13 +113,7 @@ def _numeric_timestamp_to_utc(value: float) -> pd.Timestamp:
 
 
 def _coerce_trade_timestamp(series: pd.Series) -> pd.Series:
-    """Coerce mixed provider/CCXT timestamps to UTC without unit leakage.
-
-    Pandas can coerce timezone-aware datetimes to nanosecond integers. Treating
-    those integers as milliseconds moves valid observations far into the future.
-    This parser therefore handles datetime objects directly and infers numeric
-    Unix units from magnitude (s/ms/us/ns) item-by-item.
-    """
+    """Coerce mixed provider/CCXT timestamps to UTC without unit leakage."""
     out = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns, UTC]")
     for idx, value in series.items():
         if value is None or (isinstance(value, float) and np.isnan(value)):
@@ -149,13 +145,7 @@ def summarize_trade_window(
     observed_at: str,
     window_seconds: int,
 ) -> dict:
-    """Summarize only trades inside a fixed point-in-time window.
-
-    The interval is ``[observed_at - window_seconds, observed_at]``. Trades whose
-    timestamp is later than the order-book observation are explicitly excluded so
-    the feature cannot look past the decision-time snapshot. The function records
-    raw/recent counts and staleness for auditability.
-    """
+    """Summarize trades in the closed PIT interval [t-window, t]."""
     if int(window_seconds) <= 0:
         raise ValueError("window_seconds must be positive")
     end = _utc_timestamp(observed_at)
@@ -175,12 +165,10 @@ def summarize_trade_window(
         "trade_staleness_seconds": None,
         "trade_side_semantics": TRADE_SIDE_SEMANTICS,
     }
-    if trades is None or trades.empty:
+    if trades is None or trades.empty or "timestamp" not in trades.columns:
         return empty
 
     x = trades.copy()
-    if "timestamp" not in x.columns:
-        return empty
     x["_ts"] = _coerce_trade_timestamp(x["timestamp"])
     x = x.dropna(subset=["_ts"]).copy()
     raw_count = int(len(x))
@@ -232,13 +220,20 @@ def _finite(v: float) -> bool:
 def validate_observation(obs: VenueMicrostructureObservation, cfg: V19MicrostructureConfig | None = None) -> list[str]:
     cfg = cfg or V19MicrostructureConfig()
     problems: list[str] = []
+    venue = str(obs.venue or "").lower()
     if not obs.venue or not obs.symbol or not obs.source:
         problems.append("MISSING_IDENTITY")
+    if venue and venue not in {v.lower() for v in cfg.venues}:
+        problems.append("UNCONFIGURED_VENUE")
+    if obs.symbol and obs.symbol not in set(cfg.symbols):
+        problems.append("UNCONFIGURED_SYMBOL")
+
     try:
         observed = _utc_timestamp(obs.observed_at)
     except Exception:
         observed = None
         problems.append("INVALID_OBSERVED_AT")
+
     if not _finite(obs.best_bid) or not _finite(obs.best_ask) or obs.best_bid <= 0 or obs.best_ask <= 0:
         problems.append("INVALID_TOP_OF_BOOK")
     elif obs.best_ask < obs.best_bid:
@@ -258,18 +253,46 @@ def validate_observation(obs: VenueMicrostructureObservation, cfg: V19Microstruc
         problems.append("UNDECLARED_TRADE_SIDE_SEMANTICS")
     if int(obs.trade_window_seconds) != int(cfg.trade_window_seconds):
         problems.append("TRADE_WINDOW_MISMATCH")
+
+    # The stored window is part of the evidence contract, not merely metadata.
+    if observed is not None:
+        expected_end = observed
+        expected_start = observed - pd.Timedelta(seconds=int(cfg.trade_window_seconds))
+        try:
+            if obs.trade_window_end is None or _utc_timestamp(obs.trade_window_end) != expected_end:
+                problems.append("TRADE_WINDOW_END_MISMATCH")
+        except Exception:
+            problems.append("TRADE_WINDOW_END_MISMATCH")
+        try:
+            if obs.trade_window_start is None or _utc_timestamp(obs.trade_window_start) != expected_start:
+                problems.append("TRADE_WINDOW_START_MISMATCH")
+        except Exception:
+            problems.append("TRADE_WINDOW_START_MISMATCH")
+
     if obs.trade_count < int(cfg.min_recent_trade_count):
         problems.append("INSUFFICIENT_RECENT_TRADES")
     if obs.trade_staleness_seconds is None or not _finite(obs.trade_staleness_seconds):
         problems.append("TRADE_STALENESS_UNKNOWN")
     elif float(obs.trade_staleness_seconds) > float(cfg.max_trade_staleness_seconds):
         problems.append("STALE_RECENT_TRADES")
-    if observed is not None and obs.trade_last_at is not None:
-        try:
-            if _utc_timestamp(obs.trade_last_at) > observed:
-                problems.append("FUTURE_TRADE_LEAKAGE")
-        except Exception:
-            problems.append("INVALID_TRADE_LAST_AT")
+
+    if observed is not None:
+        for field_name, value in (("TRADE_FIRST_AT", obs.trade_first_at), ("TRADE_LAST_AT", obs.trade_last_at)):
+            if value is None:
+                continue
+            try:
+                ts = _utc_timestamp(value)
+                start = observed - pd.Timedelta(seconds=int(cfg.trade_window_seconds))
+                if ts < start or ts > observed:
+                    problems.append(f"{field_name}_OUTSIDE_WINDOW")
+            except Exception:
+                problems.append(f"INVALID_{field_name}")
+        if obs.trade_last_at is not None:
+            try:
+                if _utc_timestamp(obs.trade_last_at) > observed:
+                    problems.append("FUTURE_TRADE_LEAKAGE")
+            except Exception:
+                problems.append("INVALID_TRADE_LAST_AT")
     return sorted(set(problems))
 
 
@@ -296,7 +319,7 @@ def observation_from_orderbook_and_trades(
     tw = summarize_trade_window(trades, observed_at=observed_at, window_seconds=trade_window_seconds)
 
     return VenueMicrostructureObservation(
-        venue=venue,
+        venue=str(venue).lower(),
         symbol=symbol,
         observed_at=_utc_timestamp(observed_at).isoformat(),
         best_bid=best_bid,
@@ -320,6 +343,33 @@ def observation_from_orderbook_and_trades(
     )
 
 
+def _insufficient_row(symbol: str, cfg: V19MicrostructureConfig, accepted: list[tuple[VenueMicrostructureObservation, dict]], rejected: list[dict], flags: list[str]) -> dict:
+    names = sorted({x.venue for x, _ in accepted})
+    return {
+        "symbol": symbol,
+        "status": "INSUFFICIENT_VENUE_COVERAGE",
+        "accepted_venues": len(names),
+        "accepted_venue_names": names,
+        "required_venues": cfg.min_venues_per_symbol,
+        "observed_at_min": None,
+        "observed_at_max": None,
+        "median_mid": None,
+        "mid_dispersion_bps": None,
+        "venue_clock_skew_seconds": None,
+        "mean_spread_bps": None,
+        "mean_depth_imbalance": None,
+        "mean_reported_trade_imbalance": None,
+        "mean_trade_imbalance": None,
+        "trade_sign_agreement": None,
+        "trade_side_semantics": TRADE_SIDE_SEMANTICS,
+        "trade_window_seconds": int(cfg.trade_window_seconds),
+        "feature_authorized": False,
+        "quality_flags": sorted(set(flags + ["INSUFFICIENT_UNIQUE_VENUE_COVERAGE"])),
+        "venues": [r for _, r in accepted],
+        "rejected": rejected,
+    }
+
+
 def aggregate_symbol(observations: Iterable[VenueMicrostructureObservation], cfg: V19MicrostructureConfig | None = None) -> dict:
     cfg = cfg or V19MicrostructureConfig()
     obs = list(observations)
@@ -329,8 +379,8 @@ def aggregate_symbol(observations: Iterable[VenueMicrostructureObservation], cfg
     if len(symbols) != 1:
         raise ValueError("aggregate_symbol requires one symbol")
 
-    accepted = []
-    rejected = []
+    valid: list[tuple[VenueMicrostructureObservation, dict]] = []
+    rejected: list[dict] = []
     for x in obs:
         issues = validate_observation(x, cfg)
         record = {
@@ -345,18 +395,30 @@ def aggregate_symbol(observations: Iterable[VenueMicrostructureObservation], cfg
             record["quality_issues"] = issues
             rejected.append(record)
         else:
-            accepted.append((x, record))
+            valid.append((x, record))
+
+    # Cross-venue evidence requires distinct venues. A duplicated observation from
+    # one provider must never masquerade as two independent venues. Keep only the
+    # latest valid observation per venue and gate the symbol if duplicates exist.
+    by_venue: dict[str, list[tuple[VenueMicrostructureObservation, dict]]] = {}
+    for item in valid:
+        by_venue.setdefault(item[0].venue, []).append(item)
+    accepted: list[tuple[VenueMicrostructureObservation, dict]] = []
+    aggregate_flags: list[str] = []
+    for venue, items in sorted(by_venue.items()):
+        items = sorted(items, key=lambda item: _utc_timestamp(item[0].observed_at))
+        accepted.append(items[-1])
+        if len(items) > 1:
+            aggregate_flags.append("DUPLICATE_VENUE_OBSERVATIONS")
+            for extra_obs, extra_record in items[:-1]:
+                duplicate_record = dict(extra_record)
+                duplicate_record["quality_issues"] = ["DUPLICATE_VENUE_OBSERVATION"]
+                rejected.append(duplicate_record)
 
     symbol = next(iter(symbols))
-    if len(accepted) < cfg.min_venues_per_symbol:
-        return {
-            "symbol": symbol,
-            "status": "INSUFFICIENT_VENUE_COVERAGE",
-            "accepted_venues": len(accepted),
-            "required_venues": cfg.min_venues_per_symbol,
-            "rejected": rejected,
-            "feature_authorized": False,
-        }
+    unique_venue_count = len({x.venue for x, _ in accepted})
+    if unique_venue_count < cfg.min_venues_per_symbol:
+        return _insufficient_row(symbol, cfg, accepted, rejected, aggregate_flags)
 
     mids = np.asarray([x.mid for x, _ in accepted], dtype=float)
     median_mid = float(np.median(mids))
@@ -375,7 +437,7 @@ def aggregate_symbol(observations: Iterable[VenueMicrostructureObservation], cfg
 
     signs = [np.sign(x) for x in trade_imbalances if x != 0]
     sign_agreement = float(abs(sum(signs)) / len(signs)) if signs else 0.0
-    quality_flags: list[str] = []
+    quality_flags: list[str] = list(aggregate_flags)
     if mid_dispersion_bps > cfg.max_mid_dispersion_bps:
         quality_flags.append("CROSS_VENUE_MID_DISPERSION_TOO_LARGE")
     if len(trade_imbalances) < cfg.min_venues_per_symbol:
@@ -383,12 +445,15 @@ def aggregate_symbol(observations: Iterable[VenueMicrostructureObservation], cfg
     if clock_skew_seconds > cfg.max_venue_clock_skew_seconds:
         quality_flags.append("CROSS_VENUE_CLOCK_SKEW_TOO_LARGE")
 
+    quality_flags = sorted(set(quality_flags))
     feature_authorized = not quality_flags
     mean_reported = float(mean(trade_imbalances)) if trade_imbalances else None
+    accepted_names = sorted({x.venue for x, _ in accepted})
     return {
         "symbol": symbol,
         "status": "OK" if feature_authorized else "QUALITY_GATED",
-        "accepted_venues": len(accepted),
+        "accepted_venues": len(accepted_names),
+        "accepted_venue_names": accepted_names,
         "required_venues": cfg.min_venues_per_symbol,
         "observed_at_min": observed_min,
         "observed_at_max": observed_max,
@@ -409,13 +474,23 @@ def aggregate_symbol(observations: Iterable[VenueMicrostructureObservation], cfg
     }
 
 
+def _missing_symbol_row(symbol: str, cfg: V19MicrostructureConfig) -> dict:
+    return _insufficient_row(symbol, cfg, [], [], ["NO_OBSERVATIONS_FOR_CONFIGURED_SYMBOL"])
+
+
 def build_snapshot(observations: Iterable[VenueMicrostructureObservation], cfg: V19MicrostructureConfig | None = None) -> dict:
     cfg = cfg or V19MicrostructureConfig()
     obs = list(observations)
-    by_symbol: dict[str, list[VenueMicrostructureObservation]] = {}
+    configured_symbols = set(cfg.symbols)
+    by_symbol: dict[str, list[VenueMicrostructureObservation]] = {s: [] for s in cfg.symbols}
+    unexpected_observations = 0
     for x in obs:
-        by_symbol.setdefault(x.symbol, []).append(x)
-    symbol_rows = [aggregate_symbol(by_symbol[s], cfg) for s in sorted(by_symbol)]
+        if x.symbol in configured_symbols:
+            by_symbol[x.symbol].append(x)
+        else:
+            unexpected_observations += 1
+
+    symbol_rows = [aggregate_symbol(by_symbol[s], cfg) if by_symbol[s] else _missing_symbol_row(s, cfg) for s in cfg.symbols]
     complete = [x for x in symbol_rows if x.get("feature_authorized")]
     payload = {
         "version": "v0.19",
@@ -426,10 +501,12 @@ def build_snapshot(observations: Iterable[VenueMicrostructureObservation], cfg: 
             "reported_trade_window_seconds": int(cfg.trade_window_seconds),
             "trade_side_semantics": TRADE_SIDE_SEMANTICS,
             "rest_snapshot_not_event_stream": True,
+            "venue_coverage_unit": "unique_venue",
         },
         "config": asdict(cfg),
         "symbols": symbol_rows,
         "authorized_symbol_count": len(complete),
+        "unexpected_observation_count": unexpected_observations,
         "signal_authorized": False,
         "paper_strategy_replacement_authorized": False,
         "live_execution_authorized": False,
