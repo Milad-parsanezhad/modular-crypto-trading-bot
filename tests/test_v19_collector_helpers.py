@@ -10,9 +10,13 @@ from research_bot.venue_adapter_v19 import normalized_orderbook_limit
 
 
 def _obs(venue: str, observed_at: str):
+    end = pd.Timestamp(observed_at)
     trades = pd.DataFrame([
-        {"side": "buy", "price": 100.05, "amount": 2.0},
-        {"side": "sell", "price": 100.04, "amount": 1.0},
+        {"timestamp": end - pd.Timedelta(seconds=10), "side": "buy", "price": 100.05, "amount": 2.0},
+        {"timestamp": end - pd.Timedelta(seconds=8), "side": "sell", "price": 100.04, "amount": 1.0},
+        {"timestamp": end - pd.Timedelta(seconds=6), "side": "buy", "price": 100.03, "amount": 1.0},
+        {"timestamp": end - pd.Timedelta(seconds=4), "side": "sell", "price": 100.02, "amount": 1.0},
+        {"timestamp": end - pd.Timedelta(seconds=2), "side": "buy", "price": 100.01, "amount": 1.0},
     ])
     return observation_from_orderbook_and_trades(
         venue=venue,
@@ -23,6 +27,7 @@ def _obs(venue: str, observed_at: str):
         trades=trades,
         source=f"{venue}_public",
         levels=2,
+        trade_window_seconds=60,
     )
 
 
