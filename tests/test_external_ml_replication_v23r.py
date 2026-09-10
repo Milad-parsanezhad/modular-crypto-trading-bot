@@ -41,13 +41,16 @@ def champion(threshold=0.7):
 
 def external_frame(n=240):
     score = np.linspace(0.0, 1.0, n)
-    # High-score rows are profitable so the fixture can exercise the PASS branch.
-    ret = np.where(score >= 0.7, 0.004, -0.003)
+    # High-score rows are strongly favorable but retain deterministic losing
+    # observations so profit factor is finite rather than +inf.
+    idx = np.arange(n)
+    selected_ret = np.where(idx % 5 == 0, -0.002, 0.004)
+    ret = np.where(score >= 0.7, selected_ret, -0.003)
     symbols = np.array(["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT", "LINK/USDT"])
     return pd.DataFrame({
         "signal_time": pd.date_range("2025-01-01", periods=n, freq="4h", tz="UTC"),
         "label_end_time": pd.date_range("2025-01-01 08:00", periods=n, freq="4h", tz="UTC"),
-        "symbol": symbols[np.arange(n) % len(symbols)],
+        "symbol": symbols[idx % len(symbols)],
         "timeframe": "4h", "side": 1, "f_x": score,
         "label_positive_net": (ret > 0).astype(int), "label_future_net_return": ret,
     })
@@ -65,6 +68,7 @@ def test_external_evaluation_never_refits_and_keeps_frozen_threshold():
     assert decision["model_refit_on_external"] is False
     assert (pred["frozen_threshold"] == 0.7).all()
     assert decision["decision"] == "EXTERNAL_ML_REPLICATION_PASS"
+    assert np.isfinite(decision["profit_factor"])
 
 
 def test_external_result_can_never_authorize_paper_or_live():
