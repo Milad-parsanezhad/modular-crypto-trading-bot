@@ -7,10 +7,13 @@ on:
       - "pyproject.toml"
       - "research_bot/ml_framework_v23r.py"
       - "research_bot/ml_audit_v23r.py"
+      - "research_bot/external_ml_replication_v23r.py"
       - "scripts/run_v23r_ml_rebuild_audit.py"
+      - "scripts/run_v23r_external_ml_replication.py"
       - "tests/test_ml_framework_v23r.py"
       - "tests/test_ml_audit_v23r.py"
       - "tests/test_ml_audit_v23r_regressions.py"
+      - "tests/test_external_ml_replication_v23r.py"
       - "research_bot/ict_localization_v22c.py"
       - "research_bot/multimodal_fusion_v22d.py"
       - "research_bot/scientific_liquidity_wyckoff_v22d.py"
@@ -25,10 +28,13 @@ on:
       - "pyproject.toml"
       - "research_bot/ml_framework_v23r.py"
       - "research_bot/ml_audit_v23r.py"
+      - "research_bot/external_ml_replication_v23r.py"
       - "scripts/run_v23r_ml_rebuild_audit.py"
+      - "scripts/run_v23r_external_ml_replication.py"
       - "tests/test_ml_framework_v23r.py"
       - "tests/test_ml_audit_v23r.py"
       - "tests/test_ml_audit_v23r_regressions.py"
+      - "tests/test_external_ml_replication_v23r.py"
       - "research_bot/ict_localization_v22c.py"
       - "research_bot/multimodal_fusion_v22d.py"
       - "research_bot/scientific_liquidity_wyckoff_v22d.py"
@@ -138,12 +144,13 @@ jobs:
         run: python -m pip install --no-cache-dir -e '.[dev]'
       - name: Dependency integrity
         run: python -m pip check
-      - name: Run clean ML framework and leakage/audit regressions
+      - name: Run clean ML framework, leakage, external-freeze and audit regressions
         run: |
           pytest -q \
             tests/test_ml_framework_v23r.py \
             tests/test_ml_audit_v23r.py \
             tests/test_ml_audit_v23r_regressions.py \
+            tests/test_external_ml_replication_v23r.py \
             tests/test_ml_meta_v21.py \
             tests/test_meta_gate_v21.py \
             tests/test_unsupervised_v22.py
@@ -152,6 +159,8 @@ jobs:
     needs: [deterministic-audit-tests, upstream-evidence-integrity]
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      internal_candidate: ${{ steps.internal_decision.outputs.internal_candidate }}
     steps:
       - name: Checkout immutable event SHA
         uses: actions/checkout@v7
@@ -186,8 +195,7 @@ jobs:
           expected = os.environ["EXPECTED_SHA"]
           assert actual == expected, (actual, expected)
           payload = {
-              "expected_sha": expected,
-              "actual_sha": actual,
+              "expected_sha": expected, "actual_sha": actual,
               "expected_ref": os.environ.get("EXPECTED_REF"),
               "run_id": os.environ.get("GITHUB_RUN_ID"),
               "workflow": os.environ.get("GITHUB_WORKFLOW"),
@@ -201,14 +209,29 @@ jobs:
         run: |
           python - <<'PY'
           import json, pathlib
-          p = pathlib.Path("artifacts/v23r-ml-rebuild-audit/decision.json")
-          d = json.loads(p.read_text(encoding="utf-8"))
+          d = json.loads(pathlib.Path("artifacts/v23r-ml-rebuild-audit/decision.json").read_text(encoding="utf-8"))
           assert d["dataset_audit"]["decision"] == "AUDIT_PASS", d["dataset_audit"]
           assert not d.get("live_execution_authorized", False), d
           assert not d.get("forward_paper_authorized", False), d
           assert not d.get("supervised", {}).get("live_execution_authorized", False), d.get("supervised")
+          champion = d.get("validation_champion_artifact")
+          assert champion is not None, "validation-frozen champion artifact missing"
+          assert champion.get("fit_segment") == "development_only"
+          assert champion.get("selection_segment") == "validation_only"
+          assert champion.get("test_used_for_refit") is False
           PY
-      - name: Upload broad-panel audit and ML evidence
+      - name: Export internal research-candidate decision
+        id: internal_decision
+        run: |
+          python - <<'PY'
+          import json, os, pathlib
+          d = json.loads(pathlib.Path("artifacts/v23r-ml-rebuild-audit/decision.json").read_text(encoding="utf-8"))
+          is_candidate = d.get("supervised", {}).get("decision") == "ML_RESEARCH_CANDIDATE"
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"internal_candidate={'true' if is_candidate else 'false'}\n")
+          print({"internal_candidate": is_candidate, "decision": d.get("supervised", {}).get("decision")})
+          PY
+      - name: Upload broad-panel audit, frozen champion and ML evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -217,8 +240,73 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  final-evidence-gate:
+  external-venue-replication:
     needs: real-data-panel-audit
+    if: needs.real-data-panel-audit.outputs.internal_candidate == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout immutable event SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 1
+          clean: true
+          persist-credentials: false
+      - name: Verify checkout provenance
+        run: test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install lightweight external-replication dependencies
+        run: python -m pip install --no-cache-dir -e '.[dev]'
+      - name: Dependency integrity
+        run: python -m pip check
+      - name: Download the exact internal-run frozen champion
+        uses: actions/download-artifact@v8
+        with:
+          name: v23r-ml-rebuild-audit-${{ github.run_id }}
+          path: internal-evidence
+      - name: Run no-refit/no-retuning OKX 4h venue replication
+        run: |
+          PYTHONPATH=. python scripts/run_v23r_external_ml_replication.py \
+            --internal-artifact internal-evidence \
+            --output-dir artifacts/v23r-external-ml-replication \
+            --exchange okx \
+            --symbols BTC/USDT,ETH/USDT,SOL/USDT,XRP/USDT,DOGE/USDT,ADA/USDT,LINK/USDT,LTC/USDT,BCH/USDT,TRX/USDT,AVAX/USDT,DOT/USDT \
+            --bars 2200 \
+            --min-selected 100 \
+            --min-symbols 5
+      - name: Verify frozen external semantics and persist CI provenance
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, subprocess
+          root = pathlib.Path("artifacts/v23r-external-ml-replication")
+          d = json.loads((root / "external_decision.json").read_text(encoding="utf-8"))
+          assert d["threshold_tuned_on_external"] is False, d
+          assert d["model_refit_on_external"] is False, d
+          assert d["requires_strategy_level_risk_backtest"] is True, d
+          assert d["forward_paper_authorized"] is False, d
+          assert d["live_execution_authorized"] is False, d
+          actual = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          assert actual == os.environ["EXPECTED_SHA"]
+          (root / "ci_provenance.json").write_text(json.dumps({
+              "expected_sha": os.environ["EXPECTED_SHA"], "actual_sha": actual,
+              "run_id": os.environ.get("GITHUB_RUN_ID"), "status": "EXACT_EVENT_SHA_VERIFIED"
+          }, indent=2), encoding="utf-8")
+          PY
+      - name: Upload external replication evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: v23r-external-ml-replication-${{ github.run_id }}
+          path: artifacts/v23r-external-ml-replication/
+          if-no-files-found: error
+          retention-days: 30
+
+  final-evidence-gate:
+    needs: [real-data-panel-audit, external-venue-replication]
+    if: always() && needs.real-data-panel-audit.result == 'success' && (needs.external-venue-replication.result == 'success' || needs.external-venue-replication.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -234,12 +322,20 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - name: Download exact-run research evidence
+      - name: Download exact-run internal research evidence
         uses: actions/download-artifact@v8
         with:
           name: v23r-ml-rebuild-audit-${{ github.run_id }}
           path: downloaded-evidence
-      - name: Validate artifact completeness, provenance and panel breadth
+      - name: Download external evidence when internal candidate exists
+        if: needs.real-data-panel-audit.outputs.internal_candidate == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: v23r-external-ml-replication-${{ github.run_id }}
+          path: downloaded-external
+      - name: Validate artifact completeness, provenance, panel breadth and conditional external replication
+        env:
+          INTERNAL_CANDIDATE: ${{ needs.real-data-panel-audit.outputs.internal_candidate }}
         run: |
           python - <<'PY'
           import csv, json, os, pathlib
@@ -247,6 +343,7 @@ jobs:
           required = [
               "decision.json", "labeled_dataset.csv", "provenance.json",
               "supervised_per_seed_leaderboard.csv", "unsupervised_diagnostics.csv",
+              "validation_champion.joblib", "validation_champion_manifest.json",
               "ci_provenance.json", "pip-freeze.txt",
           ]
           missing = [name for name in required if not (root / name).exists() or (root / name).stat().st_size == 0]
@@ -269,11 +366,29 @@ jobs:
           assert decision.get("live_execution_authorized") is False
           assert decision.get("forward_paper_authorized") is False
           assert decision.get("supervised", {}).get("live_execution_authorized") is False
+
+          internal_candidate = os.environ.get("INTERNAL_CANDIDATE", "false") == "true"
+          external_summary = "SKIPPED_NO_INTERNAL_CANDIDATE"
+          if internal_candidate:
+              eroot = pathlib.Path("downloaded-external")
+              erequired = ["external_decision.json", "external_predictions.csv", "external_provenance.json", "ci_provenance.json"]
+              emiss = [name for name in erequired if not (eroot / name).exists() or (eroot / name).stat().st_size == 0]
+              assert not emiss, f"missing external evidence: {emiss}"
+              ext = json.loads((eroot / "external_decision.json").read_text(encoding="utf-8"))
+              eci = json.loads((eroot / "ci_provenance.json").read_text(encoding="utf-8"))
+              assert eci["actual_sha"] == os.environ["EXPECTED_SHA"], eci
+              assert ext["threshold_tuned_on_external"] is False
+              assert ext["model_refit_on_external"] is False
+              assert ext["live_execution_authorized"] is False
+              external_summary = ext["decision"]
+
           print(json.dumps({
               "final_ci_gate": "PASS",
               "exact_sha": ci["actual_sha"],
               "usable_symbols": len(successful),
               "labeled_rows": rows,
               "ml_decision": decision.get("supervised", {}).get("decision"),
+              "external_replication": external_summary,
+              "live_execution_authorized": False,
           }, indent=2))
           PY
