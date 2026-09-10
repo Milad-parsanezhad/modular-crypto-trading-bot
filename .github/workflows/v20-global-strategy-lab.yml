@@ -1,0 +1,57 @@
+name: v20-global-strategy-risk-lab
+
+on:
+  pull_request:
+    paths:
+      - "research_bot/multitimeframe_strategies_v20.py"
+      - "scripts/run_v20_global_strategy_lab.py"
+      - "tests/test_multitimeframe_strategies_v20.py"
+      - "docs/V20_GLOBAL_SOURCE_STRATEGY_RESEARCH.md"
+      - ".github/workflows/v20-global-strategy-lab.yml"
+  push:
+    branches: [main]
+    paths:
+      - "research_bot/multitimeframe_strategies_v20.py"
+      - "scripts/run_v20_global_strategy_lab.py"
+      - "tests/test_multitimeframe_strategies_v20.py"
+      - "docs/V20_GLOBAL_SOURCE_STRATEGY_RESEARCH.md"
+      - ".github/workflows/v20-global-strategy-lab.yml"
+  workflow_dispatch:
+
+jobs:
+  causal-and-risk-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: v0.19 regression + v0.20 causal/risk tests
+        run: pytest -q tests/test_multitimeframe_strategies_v19.py tests/test_multitimeframe_strategies_v20.py
+
+  full-global-source-tournament:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Run frozen 42-candidate v0.20 tournament
+        run: |
+          PYTHONPATH=. python scripts/run_v20_global_strategy_lab.py \
+            --min-pretest-trades 1000 \
+            --min-validation-trades 200 \
+            --min-external-trades 200 \
+            --output-dir artifacts/v20-global-strategy-lab
+      - name: Upload v0.20 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v20-global-strategy-risk-lab
+          path: artifacts/v20-global-strategy-lab/
+          if-no-files-found: warn
