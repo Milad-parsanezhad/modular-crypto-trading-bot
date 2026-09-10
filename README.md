@@ -120,3 +120,24 @@ PYTHONPATH=. python scripts/run_forward_candidate_v17.py --archive-cache data/ca
 ```
 
 See `docs/V17_ICHIMOKU_STRATEGY_LAB_PROTOCOL.md` and the dated v0.17 results report. The S6 adapter emits observation-only paper candidates with a 0.25% risk budget, 35% per-asset cap, 70% portfolio-gross cap and 5% drawdown kill switch. Results remain research-only and cannot enable live execution.
+
+## v0.20 causal ICT/M1 extraction lab
+
+The uploaded ICT/TTrades/M1 educational rules are now represented by a
+closed-bar state machine: confirmed swing -> liquidity sweep -> close-confirmed
+MSB -> origin return -> structural stop/3R target. Three origin definitions are
+pre-registered and compared under identical costs. Run:
+
+```bash
+pytest -q tests/test_ict_m1_v20.py
+PYTHONPATH=. python scripts/run_ict_m1_lab_v20.py \
+  --archive-cache ../data/cache --symbol BTCUSDT --timeframe 4h \
+  --ichimoku-gate trend --output-dir artifacts/v20-ict-m1-btc
+```
+
+The 2020-2025 BTC replication rejected all three simple origin variants after
+costs. Small positive ETH cells remain insufficient and are not promotion
+evidence. See `docs/V20_ICT_M1_STRATEGY_PROTOCOL_AND_RESULTS.md`. Live execution
+remains disabled.
+
+[Run the frozen v0.20 replication in Google Colab](https://colab.research.google.com/github/parsa314/modular-crypto-trading-bot/blob/research-v20-ict-m1/notebooks/Research_Bot_v0_20_ICT_M1_Colab.ipynb).
