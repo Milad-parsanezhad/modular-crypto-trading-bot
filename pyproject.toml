@@ -26,6 +26,15 @@ ml = [
   "lightgbm>=4.5,<5",
   "catboost>=1.2,<2",
 ]
+deep = [
+  "torch>=2.6,<3",
+  "torchvision>=0.21,<1",
+  "pillow>=10,<13",
+]
+rl = [
+  "gymnasium>=1.0,<2",
+  "stable-baselines3>=2.6,<3",
+]
 
 [tool.setuptools.packages.find]
 include = ["research_bot*"]
