@@ -18,47 +18,169 @@ on:
       - ".github/workflows/v23r-repo-recovery-guard.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+  EXPECTED_REF: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "1"
+
 jobs:
   recovery-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
-      - name: Primary checkout, one-minute circuit breaker
+      - name: Primary exact-SHA checkout, one-minute circuit breaker
         id: primary_checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         continue-on-error: true
         timeout-minutes: 1
         with:
-          ref: research/v23-ml-rebuild-audit2
+          ref: ${{ env.EXPECTED_SHA }}
           fetch-depth: 1
           clean: true
+          persist-credentials: false
 
-      - name: Fallback exact-ref checkout after primary failure
-        if: steps.primary_checkout.outcome != 'success'
+      - name: Verify primary checkout is the immutable event SHA
+        id: primary_identity
+        if: steps.primary_checkout.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          echo "expected=${EXPECTED_SHA}"
+          echo "actual=${actual}"
+          test "${actual}" = "${EXPECTED_SHA}"
+
+      - name: Fallback exact-ref checkout after primary failure or identity mismatch
+        if: steps.primary_checkout.outcome != 'success' || steps.primary_identity.outcome != 'success'
         timeout-minutes: 2
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          echo "Primary checkout failed; switching method instead of retrying it."
-          rm -rf .git
+          echo "Primary checkout failed or resolved the wrong SHA; switching method immediately."
+          # Ephemeral runner only: remove the entire partial workspace, including
+          # stale .git state or files left by an interrupted checkout.
+          find "${GITHUB_WORKSPACE}" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+          cd "${GITHUB_WORKSPACE}"
           git init
           git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
           git -c http.extraheader="AUTHORIZATION: bearer ${GH_TOKEN}" fetch --no-tags --depth=1 origin \
-            "refs/heads/research/v23-ml-rebuild-audit2:refs/remotes/origin/research/v23-ml-rebuild-audit2"
-          git checkout -B research/v23-ml-rebuild-audit2 origin/research/v23-ml-rebuild-audit2
+            "refs/heads/${EXPECTED_REF}:refs/remotes/origin/${EXPECTED_REF}"
+          remote_sha="$(git rev-parse "refs/remotes/origin/${EXPECTED_REF}")"
+          test "${remote_sha}" = "${EXPECTED_SHA}"
+          git checkout -B "${EXPECTED_REF}" "refs/remotes/origin/${EXPECTED_REF}"
 
-      - uses: actions/setup-python@v5
+      - name: Verify recovered repository provenance
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          branch="$(git branch --show-current)"
+          test "${actual}" = "${EXPECTED_SHA}"
+          if [ -n "${EXPECTED_REF}" ] && [ -n "${branch}" ]; then
+            test "${branch}" = "${EXPECTED_REF}" || true
+          fi
+          mkdir -p artifacts/recovery
+          python - <<'PY'
+          import json, os, subprocess
+          payload = {
+              "expected_sha": os.environ["EXPECTED_SHA"],
+              "actual_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "expected_ref": os.environ["EXPECTED_REF"],
+              "actual_branch": subprocess.check_output(["git", "branch", "--show-current"], text=True).strip(),
+              "status": "EXACT_SHA_VERIFIED",
+          }
+          assert payload["actual_sha"] == payload["expected_sha"]
+          open("artifacts/recovery/current-checkout.json", "w", encoding="utf-8").write(json.dumps(payload, indent=2))
+          PY
+
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-          cache: pip
 
-      - run: python -m pip install -e '.[dev]'
+      - name: Install lightweight test dependencies without shared deep cache
+        run: python -m pip install --no-cache-dir -e '.[dev]'
 
-      - name: Test branch recovery and anti-loop behavior
+      - name: Dependency integrity
+        run: python -m pip check
+
+      - name: Unit-test branch recovery and anti-loop behavior
         run: pytest -q tests/test_repo_recovery.py
 
-      - name: Verify research branch identity
+      - name: Force direct-clone failure and prove the fallback path end-to-end
         run: |
-          test "$(git branch --show-current)" = "research/v23-ml-rebuild-audit2"
+          set -euo pipefail
+          root="$(mktemp -d)"
+          mkdir -p "${root}/src" "${root}/git-wrapper"
+          git -C "${root}/src" init
+          git -C "${root}/src" config user.email "ci-recovery@example.invalid"
+          git -C "${root}/src" config user.name "CI Recovery Test"
+          printf 'main\n' > "${root}/src/README.md"
+          git -C "${root}/src" add README.md
+          git -C "${root}/src" commit -m main
+          git -C "${root}/src" branch -M main
+          git -C "${root}/src" checkout -b research/forced-fallback
+          printf 'fallback-evidence\n' > "${root}/src/research.txt"
+          git -C "${root}/src" add research.txt
+          git -C "${root}/src" commit -m research
+          expected="$(git -C "${root}/src" rev-parse HEAD)"
+          git clone --bare "${root}/src" "${root}/remote.git"
+
+          cat > "${root}/git-wrapper/git" <<'SH'
+          #!/usr/bin/env bash
+          if [ "${1:-}" = "clone" ]; then
+            echo "forced direct-clone failure for fallback integration test" >&2
+            exit 97
+          fi
+          exec /usr/bin/git "$@"
+          SH
+          chmod +x "${root}/git-wrapper/git"
+
+          PATH="${root}/git-wrapper:${PATH}" PYTHONPATH=. \
+            python scripts/research_branch_bootstrap.py \
+              "file://${root}/remote.git" \
+              research/forced-fallback \
+              "${root}/recovered" \
+              --timeout-seconds 10 \
+              --expected-commit "${expected}" \
+              --audit-log "${root}/fallback-audit.jsonl" \
+              > "${root}/fallback-result.json"
+
+          python - "${root}/fallback-result.json" "${root}/fallback-audit.jsonl" "${root}/recovered" "${expected}" <<'PY'
+          import json, pathlib, subprocess, sys
+          result_path, audit_path, checkout, expected = map(pathlib.Path, sys.argv[1:4]) + [sys.argv[4]] if False else (pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3]), sys.argv[4])
+          result = json.loads(result_path.read_text(encoding="utf-8"))
+          assert result["ok"] is True, result
+          assert result["method"] == "init_fetch_fallback", result
+          actual = subprocess.check_output(["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True).strip()
+          assert actual == expected, (actual, expected)
+          audit = audit_path.read_text(encoding="utf-8")
+          assert '"event": "direct_clone"' in audit
+          assert '"event": "fallback_fetch"' in audit
+          assert (checkout / "research.txt").read_text(encoding="utf-8").strip() == "fallback-evidence"
+          PY
+
+          cp "${root}/fallback-result.json" artifacts/recovery/forced-fallback-result.json
+          cp "${root}/fallback-audit.jsonl" artifacts/recovery/forced-fallback-audit.jsonl
+
+      - name: Final worktree check
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
           git status --short
+
+      - name: Upload recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: v23r-recovery-evidence-${{ github.run_id }}
+          path: artifacts/recovery/
+          if-no-files-found: warn
+          retention-days: 30
