@@ -61,6 +61,7 @@ class V19MicrostructureConfig:
     min_signed_trade_coverage: float = 0.80
     max_spread_bps: float = 50.0
     max_mid_dispersion_bps: float = 100.0
+    max_venue_clock_skew_seconds: float = 60.0
 
 
 def _finite(v: float) -> bool:
@@ -75,6 +76,10 @@ def validate_observation(obs: VenueMicrostructureObservation, cfg: V19Microstruc
     problems: list[str] = []
     if not obs.venue or not obs.symbol or not obs.source:
         problems.append("MISSING_IDENTITY")
+    try:
+        pd.Timestamp(obs.observed_at)
+    except Exception:
+        problems.append("INVALID_OBSERVED_AT")
     if not _finite(obs.best_bid) or not _finite(obs.best_ask) or obs.best_bid <= 0 or obs.best_ask <= 0:
         problems.append("INVALID_TOP_OF_BOOK")
     elif obs.best_ask < obs.best_bid:
@@ -184,6 +189,11 @@ def aggregate_symbol(observations: Iterable[VenueMicrostructureObservation], cfg
     trade_imbalances = [x.trade_imbalance for x, _ in accepted if x.signed_trade_coverage >= cfg.min_signed_trade_coverage]
     depth_imbalances = [x.depth_imbalance for x, _ in accepted]
     spreads = [x.spread_bps for x, _ in accepted]
+    clocks = pd.to_datetime([x.observed_at for x, _ in accepted], utc=True, errors="coerce")
+    if clocks.isna().any():
+        clock_skew_seconds = float("inf")
+    else:
+        clock_skew_seconds = float((clocks.max() - clocks.min()).total_seconds())
 
     signs = [np.sign(x) for x in trade_imbalances if x != 0]
     sign_agreement = float(abs(sum(signs)) / len(signs)) if signs else 0.0
@@ -192,6 +202,8 @@ def aggregate_symbol(observations: Iterable[VenueMicrostructureObservation], cfg
         quality_flags.append("CROSS_VENUE_MID_DISPERSION_TOO_LARGE")
     if len(trade_imbalances) < cfg.min_venues_per_symbol:
         quality_flags.append("SIGNED_TRADE_COVERAGE_INSUFFICIENT")
+    if clock_skew_seconds > cfg.max_venue_clock_skew_seconds:
+        quality_flags.append("CROSS_VENUE_CLOCK_SKEW_TOO_LARGE")
 
     feature_authorized = not quality_flags
     return {
@@ -201,6 +213,7 @@ def aggregate_symbol(observations: Iterable[VenueMicrostructureObservation], cfg
         "required_venues": cfg.min_venues_per_symbol,
         "median_mid": median_mid,
         "mid_dispersion_bps": mid_dispersion_bps,
+        "venue_clock_skew_seconds": clock_skew_seconds,
         "mean_spread_bps": float(mean(spreads)),
         "mean_depth_imbalance": float(mean(depth_imbalances)),
         "mean_trade_imbalance": float(mean(trade_imbalances)) if trade_imbalances else None,
