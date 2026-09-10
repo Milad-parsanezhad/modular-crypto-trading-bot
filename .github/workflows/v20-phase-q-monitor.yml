@@ -1,6 +1,8 @@
 name: v20-phase-q-monitor
 
 on:
+  pull_request:
+    branches: ["main"]
   schedule:
     # Reporting cadence only. The source collector remains the 30-minute v0.19 workflow.
     - cron: "23 */6 * * *"
@@ -52,7 +54,11 @@ jobs:
 
       - name: Evaluate frozen seven-day data-quality gate
         run: |
-          asof=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            asof="$PHASE_Q_START_AT"
+          else
+            asof=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          fi
           python scripts/run_phase_q_v20.py \
             --input-dir artifacts/v20/source_snapshots \
             --as-of "$asof" \
