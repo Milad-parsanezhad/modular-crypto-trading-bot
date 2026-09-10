@@ -1,6 +1,6 @@
 # Chapter 4 — Results and Evaluation (Master Draft)
 
-Date: 2026-09-09
+Date: 2026-09-10
 
 > This file is an evidence-grounded master draft for thesis integration. It distinguishes historical backtest evidence, untouched-holdout evidence, engineering evidence and prospective forward evidence. It must not be rewritten to imply profitability that the artifacts do not support.
 
@@ -11,7 +11,7 @@ The experimental program was organized as a sequence of increasingly strict evid
 1. Can the software produce signals and simulate execution correctly?
 2. Does a learned candidate outperform strong baselines out of sample after costs?
 3. Does that superiority survive robustness, multiple-testing and untouched-holdout controls?
-4. Does a frozen hypothesis replicate prospectively in forward PAPER operation?
+4. Does a frozen hypothesis replicate prospectively or externally without retuning the consumed sample?
 
 This separation prevents engineering success from being misreported as investment alpha.
 
@@ -65,7 +65,31 @@ At the official v0.16 record, the system had 2 production observations, 1 simula
 
 Sharpe and Sortino are intentionally withheld until both the pre-registered sample gate and a minimum numerical depth of independent inter-snapshot returns are satisfied. The earlier paper return near -0.0261% is descriptive only and is not interpreted as evidence of positive or negative expected performance.
 
-## 4.7 Cross-stage interpretation
+## 4.7 v0.18 — Cost-aware alpha conversion
+
+v0.18 first tested whether a frozen forecast should be executed naively or only when the forecast exceeded a pre-specified transaction-cost plus uncertainty hurdle. The experiment used CoinEx BTC/USDT and ETH/USDT 4-hour spot data, a 70/30 train-holdout split, 12-bp one-way costs, and a training-only uncertainty penalty based on residual MAD.
+
+At the equal-weight portfolio level, naive sign trading returned -7.48%, with Sharpe -1.109, maximum drawdown -13.57%, turnover 114 and explicit modeled cost 0.1368. Cost-aware abstention returned approximately +0.05%, with Sharpe 0.085, maximum drawdown -1.32%, turnover 10 and explicit cost 0.0120.
+
+The cost-aware rule therefore reduced turnover and modeled execution cost by roughly 91% and greatly reduced drawdown. However, the paired moving-block bootstrap of cost-aware minus naive mean net return had a 95% interval of [-0.0003031, +0.0005508]. Because this interval crossed zero, the pre-specified superiority gate failed.
+
+The formal decision was `NO_COST_AWARE_CONVERSION_EVIDENCE`.
+
+The correct interpretation is that cost-aware abstention materially attenuated trading intensity and downside exposure in this sample, but did not establish statistically supported incremental alpha.
+
+## 4.8 v0.18 — External replication of the Ichimoku/regime hypothesis
+
+The second v0.18 experiment tested the frozen v0.11 hypothesis that Ichimoku performs differently in `HIGH_VOL` and `TREND_DOWN` regimes. The regime definition was frozen before evaluation and the test used external OKX BTC/USDT and ETH/USDT 4-hour spot data through CCXT. No threshold was optimized on the external sample.
+
+Plain Ichimoku produced -9.07% aggregate net return, Sharpe -0.289 and maximum drawdown -30.96%. The regime-conditioned variant produced -2.79%, Sharpe -0.175 and maximum drawdown -17.99%. Turnover fell from 108 to 38 and explicit modeled cost from 0.1296 to 0.0456.
+
+However, the improvement was not cross-asset stable. On BTC, regime conditioning reduced the loss from -23.61% to -0.73%, while on ETH plain Ichimoku was +7.14% and the conditioned strategy fell to -5.30%. The paired moving-block bootstrap of conditioned minus plain mean net return had a 95% interval of [-0.0002141, +0.0002566].
+
+The formal decision was `NO_EXTERNAL_REGIME_REPLICATION_EVIDENCE`.
+
+Thus, the external experiment did not validate a generalizable regime-conditioned Ichimoku edge. It did, however, show that conditioning can materially alter turnover, exposure and drawdown, which remains useful as a risk-management research question.
+
+## 4.9 Cross-stage interpretation
 
 The combined results reveal a consistent methodological pattern:
 
@@ -74,18 +98,20 @@ The combined results reveal a consistent methodological pattern:
 - stronger inference overturned superficially attractive model-selection conclusions;
 - a theoretically strong derivatives feature family did not automatically create incremental holdout alpha;
 - transaction costs and turnover materially influenced economic outcomes;
+- cost-aware abstention reduced turnover/drawdown but did not clear the statistical alpha gate;
+- external regime conditioning reduced aggregate loss/drawdown but failed cross-asset/statistical replication;
 - prospective operation must be kept separate from historical optimization.
 
 The project therefore supports an evidence-gated architecture in which complexity is promoted only when it survives increasingly strict validation.
 
-## 4.8 Search-aware statistical interpretation
+## 4.10 Search-aware statistical interpretation
 
 The next candidate-search cycle should extend the current bootstrap/FDR/CPCV infrastructure with an explicit registry of every tried strategy. This enables stronger control of research degrees of freedom through tools such as White’s Reality Check, Hansen’s SPA test, Deflated/Probabilistic Sharpe analysis and Probability of Backtest Overfitting where the data design is appropriate.
 
 The purpose is not to maximize the number of statistical tests in the thesis. The purpose is to prevent a final selected model from receiving credit for a Sharpe ratio that is partly a consequence of repeated search.
 
-## 4.9 Final result statement for the current thesis state
+## 4.11 Final result statement for the current thesis state
 
-The implemented system is operational as a modular cryptocurrency trading-research and forward PAPER platform. It has demonstrated reproducible data processing, cost-aware OOS evaluation, robustness inference, untouched-holdout testing, independent risk control, persistent paper execution and prospective evidence capture. However, no learned candidate through v0.12 has established stable incremental alpha, and the prospective v0.15-v0.16 forward sample remains below the pre-registered minimum.
+The implemented system is operational as a modular cryptocurrency trading-research and forward PAPER platform. It has demonstrated reproducible data processing, cost-aware OOS evaluation, robustness inference, untouched-holdout testing, external hypothesis replication, independent risk control, persistent paper execution and prospective evidence capture. However, no learned candidate through v0.12 has established stable incremental alpha, neither v0.18 hypothesis cleared its statistical promotion gate, and the prospective v0.15-v0.16 forward sample remains below the pre-registered minimum.
 
 Accordingly, the defensible conclusion is that the project demonstrates a rigorous and operational AI-assisted trading research framework, while profitability, stable risk-adjusted alpha and real-money LIVE readiness remain unproven at the current evidence depth.
