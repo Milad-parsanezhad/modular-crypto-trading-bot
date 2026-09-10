@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pandas as pd
 
 from research_bot.forward_microstructure_v19 import (
@@ -96,7 +98,7 @@ def test_future_trade_is_excluded_not_leaked():
     assert "FUTURE_TRADE_LEAKAGE" not in validate_observation(obs, cfg)
 
 
-def test_microstructure_aggregates_multiple_venues():
+def test_microstructure_aggregates_multiple_unique_venues():
     cfg = V19MicrostructureConfig(min_venues_per_symbol=2)
     rows = [
         _obs("coinex", "BTC/USDT", 100.0, 100.1, 6000, 4000),
@@ -105,6 +107,7 @@ def test_microstructure_aggregates_multiple_venues():
     out = aggregate_symbol(rows, cfg)
     assert out["status"] == "OK"
     assert out["accepted_venues"] == 2
+    assert out["accepted_venue_names"] == ["coinex", "okx"]
     assert out["feature_authorized"] is True
     assert out["mean_reported_trade_imbalance"] > 0
     assert out["mean_trade_imbalance"] == out["mean_reported_trade_imbalance"]
@@ -113,11 +116,75 @@ def test_microstructure_aggregates_multiple_venues():
     assert 0 <= out["trade_sign_agreement"] <= 1
 
 
-def test_microstructure_fails_closed_on_single_venue():
+def test_duplicate_observations_from_one_venue_do_not_fake_cross_venue_coverage():
+    cfg = V19MicrostructureConfig(min_venues_per_symbol=2)
+    first = _obs("coinex", "BTC/USDT", 100.0, 100.1, 6000, 4000)
+    second = _obs("coinex", "BTC/USDT", 100.01, 100.11, 5000, 5000)
+    out = aggregate_symbol([first, second], cfg)
+    assert out["feature_authorized"] is False
+    assert out["status"] == "INSUFFICIENT_VENUE_COVERAGE"
+    assert out["accepted_venues"] == 1
+    assert out["accepted_venue_names"] == ["coinex"]
+    assert "INSUFFICIENT_UNIQUE_VENUE_COVERAGE" in out["quality_flags"]
+    assert "DUPLICATE_VENUE_OBSERVATIONS" in out["quality_flags"]
+    assert any("DUPLICATE_VENUE_OBSERVATION" in r.get("quality_issues", []) for r in out["rejected"])
+
+
+def test_duplicate_venue_gates_even_when_two_unique_venues_remain():
+    cfg = V19MicrostructureConfig(min_venues_per_symbol=2)
+    rows = [
+        _obs("coinex", "BTC/USDT", 100.0, 100.1, 6000, 4000),
+        _obs("coinex", "BTC/USDT", 100.01, 100.11, 5000, 5000),
+        _obs("okx", "BTC/USDT", 100.02, 100.12, 5500, 4500),
+    ]
+    out = aggregate_symbol(rows, cfg)
+    assert out["accepted_venues"] == 2
+    assert out["feature_authorized"] is False
+    assert out["status"] == "QUALITY_GATED"
+    assert "DUPLICATE_VENUE_OBSERVATIONS" in out["quality_flags"]
+
+
+def test_microstructure_fails_closed_on_single_venue_with_stable_schema():
     cfg = V19MicrostructureConfig(min_venues_per_symbol=2)
     out = aggregate_symbol([_obs("coinex", "ETH/USDT", 200, 200.2, 1000, 1000)], cfg)
     assert out["status"] == "INSUFFICIENT_VENUE_COVERAGE"
     assert out["feature_authorized"] is False
+    assert out["accepted_venues"] == 1
+    assert out["accepted_venue_names"] == ["coinex"]
+    assert "INSUFFICIENT_UNIQUE_VENUE_COVERAGE" in out["quality_flags"]
+    assert "venues" in out and "rejected" in out
+
+
+def test_unconfigured_venue_and_symbol_are_rejected():
+    cfg = V19MicrostructureConfig()
+    rogue_venue = _obs("binance", "BTC/USDT", 100, 100.1, 1000, 1000)
+    rogue_symbol = _obs("coinex", "SOL/USDT", 100, 100.1, 1000, 1000)
+    assert "UNCONFIGURED_VENUE" in validate_observation(rogue_venue, cfg)
+    assert "UNCONFIGURED_SYMBOL" in validate_observation(rogue_symbol, cfg)
+
+
+def test_trade_window_metadata_tampering_is_rejected():
+    cfg = V19MicrostructureConfig()
+    obs = _obs("coinex", "BTC/USDT", 100, 100.1, 1000, 1000)
+    bad_start = replace(obs, trade_window_start=(OBSERVED_AT - pd.Timedelta(seconds=59)).isoformat())
+    bad_end = replace(obs, trade_window_end=(OBSERVED_AT - pd.Timedelta(seconds=1)).isoformat())
+    assert "TRADE_WINDOW_START_MISMATCH" in validate_observation(bad_start, cfg)
+    assert "TRADE_WINDOW_END_MISMATCH" in validate_observation(bad_end, cfg)
+
+
+def test_snapshot_materializes_missing_configured_symbol_fail_closed():
+    cfg = V19MicrostructureConfig(min_venues_per_symbol=2)
+    rows = [
+        _obs("coinex", "BTC/USDT", 100.0, 100.1, 6000, 4000),
+        _obs("okx", "BTC/USDT", 100.02, 100.12, 5500, 4500),
+    ]
+    out = build_snapshot(rows, cfg)
+    by_symbol = {row["symbol"]: row for row in out["symbols"]}
+    assert set(by_symbol) == {"BTC/USDT", "ETH/USDT"}
+    assert by_symbol["BTC/USDT"]["feature_authorized"] is True
+    assert by_symbol["ETH/USDT"]["feature_authorized"] is False
+    assert "NO_OBSERVATIONS_FOR_CONFIGURED_SYMBOL" in by_symbol["ETH/USDT"]["quality_flags"]
+    assert out["authorized_symbol_count"] == 1
 
 
 def test_snapshot_never_authorizes_trading_and_declares_measurement_contract():
@@ -136,4 +203,5 @@ def test_snapshot_never_authorizes_trading_and_declares_measurement_contract():
     assert out["measurement_contract"]["primary_trading_horizon"] == "4h"
     assert out["measurement_contract"]["reported_trade_window_seconds"] == 60
     assert out["measurement_contract"]["rest_snapshot_not_event_stream"] is True
+    assert out["measurement_contract"]["venue_coverage_unit"] == "unique_venue"
     assert len(out["snapshot_sha256"]) == 64
