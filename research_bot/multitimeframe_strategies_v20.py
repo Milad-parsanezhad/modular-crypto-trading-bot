@@ -124,7 +124,12 @@ def attach_completed_htf_context(frame: pd.DataFrame, timeframe: str, peer: pd.D
     h["available_time"] = raw["available_time"].to_numpy()
     wanted = ["available_time", "close", "ema50", "ema200", "ema200_slope", "atr_pct", "cloud_top", "cloud_bottom", "tenkan", "kijun", "bull_retracement", "bear_retracement", "sweep_down", "sweep_up", "bos_up", "bos_down"]
     right = h[wanted].rename(columns={c: f"htf_{c}" for c in wanted if c != "available_time"})
-    return pd.merge_asof(base, right.sort_values("available_time"), left_on="timestamp", right_on="available_time", direction="backward", allow_exact_matches=True)
+    # CoinEx currently materializes millisecond timestamps while pandas resample
+    # arithmetic can promote HTF availability to microseconds. Force a common
+    # nanosecond UTC dtype before merge_asof so real-data behavior matches tests.
+    base["timestamp"] = pd.to_datetime(base["timestamp"], utc=True).astype("datetime64[ns, UTC]")
+    right["available_time"] = pd.to_datetime(right["available_time"], utc=True).astype("datetime64[ns, UTC]")
+    return pd.merge_asof(base.sort_values("timestamp"), right.sort_values("available_time"), left_on="timestamp", right_on="available_time", direction="backward", allow_exact_matches=True)
 
 
 def _recent(flag: pd.Series, bars: int) -> pd.Series:
@@ -296,4 +301,20 @@ def evaluate_external_replication(attempts: pd.DataFrame, validation: V20Validat
 
 
 def apply_candidate_level_policy(attempts: pd.DataFrame, spec: StrategySpec, policy: RiskPsychologyPolicy | None = None) -> pd.DataFrame:
-    return apply_risk_psychology_overlay(attempts, spec, policy)
+    """Apply risk state independently inside each evaluation segment.
+
+    This prevents a development-period kill switch from mechanically suppressing
+    all later validation/test observations while retaining causal, sequential
+    state within each segment. Segment boundaries are part of the frozen
+    evaluation protocol, not inferred from future outcomes.
+    """
+    if attempts.empty or "segment" not in attempts:
+        return apply_risk_psychology_overlay(attempts, spec, policy)
+    parts: list[pd.DataFrame] = []
+    for segment in ("development", "validation", "test"):
+        part = attempts[attempts["segment"] == segment].copy()
+        if not part.empty:
+            parts.append(apply_risk_psychology_overlay(part, spec, policy))
+    if not parts:
+        return attempts.copy()
+    return pd.concat(parts, ignore_index=True).sort_values(["entry_time", "symbol"]).reset_index(drop=True)
