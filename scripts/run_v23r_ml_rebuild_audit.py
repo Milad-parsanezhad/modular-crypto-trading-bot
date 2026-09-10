@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import json
+from hashlib import sha256
 from pathlib import Path
 
+import joblib
 import numpy as np
 import pandas as pd
 from sklearn.base import clone
@@ -95,7 +97,6 @@ def fit_supervised(splits: dict[str, pd.DataFrame], contract: MLResearchContract
     for seed in contract.search.seeds:
         for name, estimator in supervised_model_registry(seed).items():
             pipe = Pipeline([("prep", make_preprocessor(numeric, categorical)), ("model", clone(estimator))])
-            status, error = "ok", ""
             try:
                 pipe.fit(dev[xcols], dev["label_positive_net"].astype(int))
                 pv = probability_score(pipe, val[xcols])
@@ -107,15 +108,14 @@ def fit_supervised(splits: dict[str, pd.DataFrame], contract: MLResearchContract
                 cm_v = classification_metrics(val["label_positive_net"], pv)
                 cm_t = classification_metrics(test["label_positive_net"], pt)
                 rows.append({
-                    "model": name, "seed": seed, "status": status, "threshold": threshold,
+                    "model": name, "seed": seed, "status": "ok", "threshold": threshold,
                     **{f"validation_{k}": v for k, v in cm_v.items()},
                     **{f"validation_{k}": v for k, v in econ_v.items()},
                     **{f"test_{k}": v for k, v in cm_t.items()},
                     **{f"test_{k}": v for k, v in econ_t.items()},
                 })
             except Exception as exc:
-                error = f"{type(exc).__name__}: {exc}"
-                rows.append({"model": name, "seed": seed, "status": "failed", "error": error})
+                rows.append({"model": name, "seed": seed, "status": "failed", "error": f"{type(exc).__name__}: {exc}"})
     board = pd.DataFrame(rows)
     ok = board[board["status"] == "ok"].copy()
     if ok.empty:
@@ -148,6 +148,50 @@ def fit_supervised(splits: dict[str, pd.DataFrame], contract: MLResearchContract
     return board, decision
 
 
+def persist_validation_champion(
+    splits: dict[str, pd.DataFrame],
+    contract: MLResearchContract,
+    decision: dict,
+    output_dir: Path,
+) -> dict | None:
+    """Refit only the validation-selected family/seed on development and serialize it.
+
+    The test set never participates in this refit. The frozen validation threshold
+    travels with the artifact and must not be tuned on an external venue.
+    """
+    name = decision.get("champion_family")
+    seed = decision.get("champion_seed")
+    threshold = decision.get("threshold")
+    if name is None or seed is None or threshold is None:
+        return None
+    dev = splits["development"]
+    numeric, categorical = select_feature_columns(dev, include_context=True, include_identity=False)
+    xcols = numeric + categorical
+    registry = supervised_model_registry(int(seed))
+    if name not in registry:
+        raise RuntimeError(f"validation champion is not reproducible from registry: {name}")
+    pipe = Pipeline([("prep", make_preprocessor(numeric, categorical)), ("model", clone(registry[name]))])
+    pipe.fit(dev[xcols], dev["label_positive_net"].astype(int))
+    model_path = output_dir / "validation_champion.joblib"
+    joblib.dump(pipe, model_path, compress=3)
+    schema_payload = json.dumps({"numeric": numeric, "categorical": categorical}, sort_keys=True).encode("utf-8")
+    manifest = {
+        "champion_family": str(name),
+        "champion_seed": int(seed),
+        "frozen_threshold": float(threshold),
+        "numeric_features": numeric,
+        "categorical_features": categorical,
+        "feature_schema_sha256": sha256(schema_payload).hexdigest(),
+        "fit_segment": "development_only",
+        "selection_segment": "validation_only",
+        "test_used_for_refit": False,
+        "internal_decision": decision.get("decision"),
+        "live_execution_authorized": False,
+    }
+    (output_dir / "validation_champion_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return manifest
+
+
 def fit_unsupervised(dev: pd.DataFrame) -> pd.DataFrame:
     numeric, _ = select_feature_columns(dev, include_context=False, include_identity=False)
     x = dev[numeric].copy()
@@ -156,10 +200,7 @@ def fit_unsupervised(dev: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for name, model in unsupervised_model_registry(314).items():
         try:
-            if name == "isolation_forest":
-                label = model.fit_predict(z)
-            else:
-                label = model.fit_predict(z)
+            label = model.fit_predict(z)
             values, counts = np.unique(label, return_counts=True)
             rows.append({
                 "model": name, "status": "ok", "development_rows": int(len(z)),
@@ -210,6 +251,7 @@ def main() -> None:
     split_map = {k: audited[audited.segment == k].copy() for k in ("development", "validation", "test")}
     board, supervised_decision = fit_supervised(split_map, contract)
     board.to_csv(out / "supervised_per_seed_leaderboard.csv", index=False)
+    champion_manifest = persist_validation_champion(split_map, contract, supervised_decision, out)
     unsup = fit_unsupervised(split_map["development"])
     unsup.to_csv(out / "unsupervised_diagnostics.csv", index=False)
 
@@ -218,6 +260,7 @@ def main() -> None:
         "stage": "CLEAN_ML_FRAMEWORK_REBUILD_AND_AUDIT",
         "dataset_audit": audit_summary,
         "supervised": supervised_decision,
+        "validation_champion_artifact": champion_manifest,
         "unsupervised_models_succeeded": int((unsup.status == "ok").sum()) if not unsup.empty else 0,
         "deep_temporal_track": "separate; no mixing tabular test selection with LSTM/GRU/TCN/Transformer",
         "vision_track": "v0.22c/v0.22d evidence preserved; not connected to RL here",
