@@ -1,0 +1,64 @@
+name: v23r-repo-recovery-guard
+
+on:
+  push:
+    branches: [research/v23-ml-rebuild-audit2]
+    paths:
+      - "research_bot/repo_recovery.py"
+      - "scripts/research_branch_bootstrap.py"
+      - "tests/test_repo_recovery.py"
+      - "docs/RESEARCH_BRANCH_RECOVERY_PROTOCOL.md"
+      - ".github/workflows/v23r-repo-recovery-guard.yml"
+  pull_request:
+    paths:
+      - "research_bot/repo_recovery.py"
+      - "scripts/research_branch_bootstrap.py"
+      - "tests/test_repo_recovery.py"
+      - "docs/RESEARCH_BRANCH_RECOVERY_PROTOCOL.md"
+      - ".github/workflows/v23r-repo-recovery-guard.yml"
+  workflow_dispatch:
+
+jobs:
+  recovery-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Primary checkout, one-minute circuit breaker
+        id: primary_checkout
+        uses: actions/checkout@v4
+        continue-on-error: true
+        timeout-minutes: 1
+        with:
+          ref: research/v23-ml-rebuild-audit2
+          fetch-depth: 1
+          clean: true
+
+      - name: Fallback exact-ref checkout after primary failure
+        if: steps.primary_checkout.outcome != 'success'
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "Primary checkout failed; switching method instead of retrying it."
+          rm -rf .git
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -c http.extraheader="AUTHORIZATION: bearer ${GH_TOKEN}" fetch --no-tags --depth=1 origin \
+            "refs/heads/research/v23-ml-rebuild-audit2:refs/remotes/origin/research/v23-ml-rebuild-audit2"
+          git checkout -B research/v23-ml-rebuild-audit2 origin/research/v23-ml-rebuild-audit2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install -e '.[dev]'
+
+      - name: Test branch recovery and anti-loop behavior
+        run: pytest -q tests/test_repo_recovery.py
+
+      - name: Verify research branch identity
+        run: |
+          test "$(git branch --show-current)" = "research/v23-ml-rebuild-audit2"
+          git status --short
