@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 
 import ccxt
@@ -18,6 +19,7 @@ from research_bot.forward_microstructure_v19 import (
     summarize_trade_window,
 )
 from research_bot.integrity_v19 import finalize_payload_hash
+from research_bot.phase_q_v20 import phase_q_protocol_metadata
 from research_bot.venue_adapter_v19 import normalized_orderbook_limit
 
 
@@ -128,6 +130,19 @@ def _ccxt_observations(
     return observations, failures
 
 
+def _ci_provenance() -> dict:
+    return {
+        "event_name": os.getenv("GITHUB_EVENT_NAME", "local"),
+        "run_id": os.getenv("GITHUB_RUN_ID"),
+        "run_attempt": os.getenv("GITHUB_RUN_ATTEMPT"),
+        "workflow": os.getenv("GITHUB_WORKFLOW"),
+        "ref": os.getenv("GITHUB_REF"),
+        "sha": os.getenv("GITHUB_SHA"),
+        "repository": os.getenv("GITHUB_REPOSITORY"),
+        "actor": os.getenv("GITHUB_ACTOR"),
+    }
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--output", default="artifacts/v19/forward_microstructure_snapshot.json")
@@ -167,6 +182,8 @@ def main() -> None:
     snapshot["provider_failures"] = failures
     snapshot["raw_observation_count"] = len(observations)
     snapshot["collection_rule"] = "prospective_only_fixed_window_no_backfill_no_signal"
+    snapshot["phase_q_protocol"] = phase_q_protocol_metadata()
+    snapshot["ci_provenance"] = _ci_provenance()
     finalize_payload_hash(snapshot, "snapshot_sha256")
 
     out = Path(args.output)
@@ -178,6 +195,9 @@ def main() -> None:
         "raw_observation_count": snapshot["raw_observation_count"],
         "failures": len(failures),
         "trade_window_seconds": cfg.trade_window_seconds,
+        "phase_q_protocol_version": snapshot["phase_q_protocol"]["protocol_version"],
+        "ci_event": snapshot["ci_provenance"]["event_name"],
+        "ci_ref": snapshot["ci_provenance"]["ref"],
         "snapshot_sha256": snapshot["snapshot_sha256"],
     }, indent=2))
 

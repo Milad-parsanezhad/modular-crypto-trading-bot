@@ -13,6 +13,10 @@ permissions:
 env:
   PYTHONUNBUFFERED: "1"
 
+concurrency:
+  group: v19-forward-microstructure
+  cancel-in-progress: false
+
 jobs:
   collect:
     runs-on: ubuntu-24.04
@@ -33,10 +37,11 @@ jobs:
           python scripts/collect_v19_forward_microstructure.py \
             --trade-window-seconds 60 \
             --output "artifacts/v19/forward/microstructure-${stamp}.json"
-      - name: Validate measurement and no-execution contract
+      - name: Validate measurement, provenance and no-execution contract
         run: |
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
           from research_bot.integrity_v19 import payload_sha256
 
@@ -52,6 +57,13 @@ jobs:
           assert z['paper_strategy_replacement_authorized'] is False
           assert z['live_execution_authorized'] is False
           assert z['collection_rule']=='prospective_only_fixed_window_no_backfill_no_signal'
+          assert z['phase_q_protocol']['protocol_version']=='v0.20-phase-q-1'
+          assert z['phase_q_protocol']['pilot_start_at']=='2026-09-10T13:00:00+00:00'
+          assert z['phase_q_protocol']['maturity_not_before']=='2026-09-17T13:00:00+00:00'
+          assert z['phase_q_protocol']['manual_dispatch_counts_toward_maturity'] is False
+          assert z['ci_provenance']['event_name']==os.environ['GITHUB_EVENT_NAME']
+          assert z['ci_provenance']['ref']==os.environ['GITHUB_REF']
+          assert z['ci_provenance']['sha']==os.environ['GITHUB_SHA']
           assert z['snapshot_sha256']==payload_sha256(z, exclude_keys=('snapshot_sha256',))
           for row in z['symbols']:
               if row.get('feature_authorized'):
@@ -59,6 +71,8 @@ jobs:
                   assert row['trade_side_semantics']=='exchange_reported_side_unverified_aggressor'
                   assert row['venue_clock_skew_seconds'] <= z['config']['max_venue_clock_skew_seconds']
           print({
+              'event':z['ci_provenance']['event_name'],
+              'ref':z['ci_provenance']['ref'],
               'authorized_symbol_count':z['authorized_symbol_count'],
               'raw_observation_count':z['raw_observation_count'],
               'provider_failures':len(z['provider_failures']),

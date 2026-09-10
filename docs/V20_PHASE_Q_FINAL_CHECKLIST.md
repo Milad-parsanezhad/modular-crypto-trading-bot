@@ -1,0 +1,23 @@
+# v0.20 Phase-Q Final Checklist
+
+- [x] Pilot start frozen before countable window.
+- [x] Earliest maturity frozen.
+- [x] Scheduled-main-only evidence rule implemented.
+- [x] Manual/PR/branch runs excluded from maturity.
+- [x] Final payload SHA-256 validated before counting.
+- [x] Duplicate hashes cannot inflate evidence.
+- [x] Duplicate 30-minute slots cannot inflate coverage.
+- [x] Fixed BTC/ETH symbol gate retained.
+- [x] 168-hour and 336-opportunity requirements retained.
+- [x] 80% authorized coverage required per symbol.
+- [x] p95 clock skew <= 60s retained.
+- [x] p95 trade staleness <= 30s retained.
+- [x] Provider failures and measurement gaps reported.
+- [x] Evidence-ledger SHA-256 generated.
+- [x] Prior GitHub artifacts harvested reproducibly.
+- [x] Six-hour monitor workflow added.
+- [x] PAPER/testnet/LIVE remain fail-closed.
+- [x] Passing Gate Q permits only feature-spec freeze.
+- [ ] Real seven-day prospective clock completed.
+- [ ] Phase Q passed on real scheduled data.
+- [ ] Phase-P feature specification frozen after a valid pass.
