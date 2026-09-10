@@ -21,8 +21,10 @@ from research_bot.forward_microstructure_v19 import (
 def _coinex_observation(symbol: str, cfg: V19MicrostructureConfig) -> VenueMicrostructureObservation:
     depth = fetch_coinex_depth(symbol, limit=cfg.depth_levels)
     trades = fetch_coinex_market_deals(symbol, market_type="spot", pages=1, limit=cfg.trades_limit)
-    bids = [[depth.best_bid, depth.bid_depth / max(depth.best_bid, 1e-12)]]
-    asks = [[depth.best_ask, depth.ask_depth / max(depth.best_ask, 1e-12)]]
+    # DepthSnapshot stores aggregate base-asset quantity. Preserve that unit here;
+    # observation_from_orderbook_and_trades converts price * quantity to quote notional.
+    bids = [[depth.best_bid, depth.bid_depth]]
+    asks = [[depth.best_ask, depth.ask_depth]]
     return observation_from_orderbook_and_trades(
         venue="coinex",
         symbol=symbol,
