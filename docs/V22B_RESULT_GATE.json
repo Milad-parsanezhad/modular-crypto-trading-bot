@@ -1,0 +1,20 @@
+{
+  "decision": "AUGMENTED_REPRESENTATION_CANDIDATE_ONLY",
+  "raw_detector": {
+    "model": "small_cnn:raw_candles",
+    "validation_supported_macro_f1": 0.13381019398849758,
+    "test_supported_macro_f1": 0.11682308031410152,
+    "passed": false
+  },
+  "augmented_representation": {
+    "model": "small_cnn:structure_augmented",
+    "validation_outcome_auc": 0.5802074276487392,
+    "test_outcome_auc": 0.5868605476829983,
+    "validation_auc_gain_vs_raw": 0.04226183082846835,
+    "passed": true
+  },
+  "allowed_next_stage": "MULTIMODAL_REPRESENTATION_ABLATION_ONLY",
+  "trading_strategy_promotion": false,
+  "paper_replacement_authorized": false,
+  "live_execution_authorized": false
+}
