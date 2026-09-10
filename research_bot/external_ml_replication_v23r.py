@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
-from typing import Iterable
 import json
 
 import joblib
@@ -36,6 +36,11 @@ class FrozenChampion:
         return self.numeric_features + self.categorical_features
 
 
+def _schema_sha(numeric: tuple[str, ...], categorical: tuple[str, ...]) -> str:
+    payload = json.dumps({"numeric": list(numeric), "categorical": list(categorical)}, sort_keys=True).encode("utf-8")
+    return sha256(payload).hexdigest()
+
+
 def load_frozen_champion(internal_artifact_dir: str | Path) -> FrozenChampion:
     root = Path(internal_artifact_dir)
     manifest_path = root / "validation_champion_manifest.json"
@@ -58,6 +63,10 @@ def load_frozen_champion(internal_artifact_dir: str | Path) -> FrozenChampion:
     categorical = tuple(manifest.get("categorical_features", []))
     if not numeric:
         raise RuntimeError("frozen feature schema has no numeric features")
+    expected_schema_sha = str(manifest.get("feature_schema_sha256", ""))
+    actual_schema_sha = _schema_sha(numeric, categorical)
+    if not expected_schema_sha or actual_schema_sha != expected_schema_sha:
+        raise RuntimeError(f"frozen feature schema hash mismatch expected={expected_schema_sha} actual={actual_schema_sha}")
     model = joblib.load(model_path)
     return FrozenChampion(
         model=model,
@@ -66,7 +75,7 @@ def load_frozen_champion(internal_artifact_dir: str | Path) -> FrozenChampion:
         threshold=threshold,
         numeric_features=numeric,
         categorical_features=categorical,
-        feature_schema_sha256=str(manifest["feature_schema_sha256"]),
+        feature_schema_sha256=expected_schema_sha,
     )
 
 
