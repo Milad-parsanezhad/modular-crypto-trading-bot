@@ -1,6 +1,15 @@
 name: v22-ict-vision
 
 on:
+  push:
+    branches: [research/v22-ict-vision-lab]
+    paths:
+      - "research_bot/vision_ict_v22.py"
+      - "scripts/run_v22_ict_vision_lab.py"
+      - "tests/test_vision_ict_v22.py"
+      - "docs/V22_ICT_VISION_IMPLEMENTATION.md"
+      - ".github/workflows/v22-ict-vision.yml"
+      - "pyproject.toml"
   pull_request:
     paths:
       - "research_bot/vision_ict_v22.py"
