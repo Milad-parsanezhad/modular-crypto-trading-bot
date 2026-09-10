@@ -30,13 +30,15 @@ from sklearn.preprocessing import OneHotEncoder, RobustScaler
 BANNED_FEATURE_EXACT = {
     "label", "target", "future_return", "future_log_return", "future_price",
     "entry", "exit", "stop", "take_profit", "r_multiple", "realized_return",
-    "net_return", "gross_return", "pnl", "equity_after", "exit_reason",
-    "executed", "filled", "fill_price", "max_favorable_excursion",
-    "max_adverse_excursion",
+    "realized_pnl", "realized_r", "net_return", "gross_return", "pnl",
+    "equity_after", "exit_reason", "executed", "filled", "fill_price",
+    "max_favorable_excursion", "max_adverse_excursion",
+    "f_realized_return", "f_realized_pnl", "f_realized_r",
 }
 BANNED_SUBSTRINGS = (
-    "future_", "_future", "realized_", "outcome", "label_", "target_",
-    "exit_", "pnl", "profit_after", "equity_after",
+    "future_", "_future", "outcome", "label_", "target_", "exit_", "pnl",
+    "realized_return", "realized_pnl", "realized_r_multiple",
+    "profit_after", "equity_after", "post_trade",
 )
 IDENTITY_FEATURES = ("symbol", "strategy", "family")
 CONTEXT_FEATURES = ("timeframe", "side")
