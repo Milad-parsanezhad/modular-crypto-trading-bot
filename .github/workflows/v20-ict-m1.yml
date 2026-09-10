@@ -11,6 +11,15 @@ on:
       - "notebooks/Research_Bot_v0_20_ICT_M1_Colab.ipynb"
       - "docs/V20_ICT_M1_STRATEGY_PROTOCOL_AND_RESULTS.md"
       - ".github/workflows/v20-ict-m1.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "research_bot/ict_m1_v20.py"
+      - "scripts/run_ict_m1_lab_v20.py"
+      - "tests/test_ict_m1_v20.py"
+      - "notebooks/Research_Bot_v0_20_ICT_M1_Colab.ipynb"
+      - "docs/V20_ICT_M1_STRATEGY_PROTOCOL_AND_RESULTS.md"
+      - ".github/workflows/v20-ict-m1.yml"
 
 permissions:
   contents: read
