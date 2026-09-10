@@ -5,7 +5,7 @@ from research_bot.forward_microstructure_v19 import (
     aggregate_symbol,
     observation_from_orderbook_and_trades,
 )
-from scripts.collect_v19_forward_microstructure import _book_limit
+from research_bot.venue_adapter_v19 import normalized_orderbook_limit
 
 
 def _obs(venue: str, observed_at: str):
@@ -26,10 +26,10 @@ def _obs(venue: str, observed_at: str):
 
 
 def test_kucoin_orderbook_limit_is_normalized():
-    assert _book_limit("kucoin", 10) == 20
-    assert _book_limit("kucoin", 20) == 20
-    assert _book_limit("kucoin", 50) == 100
-    assert _book_limit("okx", 10) == 10
+    assert normalized_orderbook_limit("kucoin", 10) == 20
+    assert normalized_orderbook_limit("kucoin", 20) == 20
+    assert normalized_orderbook_limit("kucoin", 50) == 100
+    assert normalized_orderbook_limit("okx", 10) == 10
 
 
 def test_cross_venue_clock_skew_is_quality_gated():
