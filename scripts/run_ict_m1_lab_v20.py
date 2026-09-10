@@ -12,17 +12,11 @@ from research_bot.binance_spot_archive import load_monthly_spot_archives
 from research_bot.ict_m1_v20 import (
     IctM1Config,
     ORIGIN_VARIANTS,
+    REPORTING_PERIODS,
     evaluate_ict_m1_variants,
     summarize_ict_m1_trades,
 )
 from research_bot.reproducibility import dataframe_fingerprint
-
-
-PERIODS = (
-    ("development", "2020-01-01 00:00:00+00:00", "2023-12-31 23:59:59+00:00"),
-    ("validation", "2024-01-01 00:00:00+00:00", "2024-12-31 23:59:59+00:00"),
-    ("final_test", "2025-01-01 00:00:00+00:00", "2025-12-31 23:59:59+00:00"),
-)
 
 
 def _load_csv(path: Path) -> pd.DataFrame:
@@ -68,7 +62,7 @@ def main() -> None:
     cfg = IctM1Config(timeframe=args.timeframe, ichimoku_gate=args.ichimoku_gate)
     summary, trades, setups = evaluate_ict_m1_variants(frame, cfg)
     period_rows: list[dict] = []
-    for period, start, end in PERIODS:
+    for period, start, end in REPORTING_PERIODS:
         start_ts, end_ts = pd.Timestamp(start), pd.Timestamp(end)
         period_setups = setups[
             setups["confirm_time"].between(start_ts, end_ts, inclusive="both")
