@@ -2,7 +2,7 @@
 
 Date: 2026-09-10
 
-> This file is an evidence-grounded master draft for thesis integration. It distinguishes historical backtest evidence, untouched-holdout evidence, engineering evidence and prospective forward evidence. It must not be rewritten to imply profitability that the artifacts do not support.
+> This file is an evidence-grounded master draft for thesis integration. It distinguishes historical backtest evidence, untouched-holdout evidence, retrospective audit evidence, engineering evidence and prospective forward evidence. It must not be rewritten to imply profitability that the artifacts do not support.
 
 ## 4.1 Evaluation philosophy
 
@@ -65,31 +65,45 @@ At the official v0.16 record, the system had 2 production observations, 1 simula
 
 Sharpe and Sortino are intentionally withheld until both the pre-registered sample gate and a minimum numerical depth of independent inter-snapshot returns are satisfied. The earlier paper return near -0.0261% is descriptive only and is not interpreted as evidence of positive or negative expected performance.
 
-## 4.7 v0.18 — Cost-aware alpha conversion
+## 4.7 v0.18 — Original cost-aware execution experiment
 
-v0.18 first tested whether a frozen forecast should be executed naively or only when the forecast exceeded a pre-specified transaction-cost plus uncertainty hurdle. The experiment used CoinEx BTC/USDT and ETH/USDT 4-hour spot data, a 70/30 train-holdout split, 12-bp one-way costs, and a training-only uncertainty penalty based on residual MAD.
+v0.18 tested whether a frozen forecast should be executed naively or only when forecast magnitude exceeded a pre-specified transaction-cost plus uncertainty hurdle. The original experiment reported a strong reduction in turnover and drawdown under the cost-aware rule, but its paired moving-block bootstrap confidence interval crossed zero. The formal decision was therefore `NO_COST_AWARE_CONVERSION_EVIDENCE`.
 
-At the equal-weight portfolio level, naive sign trading returned -7.48%, with Sharpe -1.109, maximum drawdown -13.57%, turnover 114 and explicit modeled cost 0.1368. Cost-aware abstention returned approximately +0.05%, with Sharpe 0.085, maximum drawdown -1.32%, turnover 10 and explicit cost 0.0120.
+A later v0.19 audit found that v0.18 calibrated uncertainty using residuals from the fitted training sample rather than chronological out-of-fold residuals, and that terminal closing cost could be omitted when a final position remained open. Because the original v0.18 raw OHLCV bytes were not archived, the exact historical v0.18 numerical table is preserved as an immutable record but is not treated as the final corrected implementation.
 
-The cost-aware rule therefore reduced turnover and modeled execution cost by roughly 91% and greatly reduced drawdown. However, the paired moving-block bootstrap of cost-aware minus naive mean net return had a 95% interval of [-0.0003031, +0.0005508]. Because this interval crossed zero, the pre-specified superiority gate failed.
+## 4.8 v0.18 — Original regime experiment and subsequent fidelity correction
 
-The formal decision was `NO_COST_AWARE_CONVERSION_EVIDENCE`.
+The second v0.18 experiment was originally described as an external replication of the v0.11 Ichimoku/regime hypothesis. The original external result was net negative and statistically inconclusive, so it did not promote the strategy.
 
-The correct interpretation is that cost-aware abstention materially attenuated trading intensity and downside exposure in this sample, but did not establish statistically supported incremental alpha.
+The v0.19 audit subsequently identified two critical hypothesis-fidelity issues. First, the v0.11 Ichimoku baseline was a synchronized cross-sectional ranking strategy that selected the top quartile, whereas v0.18 had converted the score into a per-asset binary `score > 0` rule. Second, v0.11 regime diagnostics used a market-level regime classification, whereas v0.18 applied per-asset regime gates.
 
-## 4.8 v0.18 — External replication of the Ichimoku/regime hypothesis
+Accordingly, the original v0.18 result remains part of the project history but must not be described as an exact replication of the v0.11 portfolio-level hypothesis. This correction strengthens rather than weakens the thesis record because the discrepancy is explicitly audited instead of being silently overwritten.
 
-The second v0.18 experiment tested the frozen v0.11 hypothesis that Ichimoku performs differently in `HIGH_VOL` and `TREND_DOWN` regimes. The regime definition was frozen before evaluation and the test used external OKX BTC/USDT and ETH/USDT 4-hour spot data through CCXT. No threshold was optimized on the external sample.
+## 4.9 v0.19 — Audit-corrected retrospective reconstruction
 
-Plain Ichimoku produced -9.07% aggregate net return, Sharpe -0.289 and maximum drawdown -30.96%. The regime-conditioned variant produced -2.79%, Sharpe -0.175 and maximum drawdown -17.99%. Turnover fell from 108 to 38 and explicit modeled cost from 0.1296 to 0.0456.
+v0.19 repaired the cost-aware uncertainty calibration using chronological expanding out-of-fold residuals, charged terminal liquidation cost, persisted data fingerprints/coverage metadata, restored the v0.11 cross-sectional top-quartile Ichimoku geometry and restored market-level regime classification.
 
-However, the improvement was not cross-asset stable. On BTC, regime conditioning reduced the loss from -23.61% to -0.73%, while on ETH plain Ichimoku was +7.14% and the conditioned strategy fell to -5.30%. The paired moving-block bootstrap of conditioned minus plain mean net return had a 95% interval of [-0.0002141, +0.0002566].
+Because the original raw v0.18 sample was not archived, the corrected implementation was executed on a refreshed public-data reconstruction and explicitly labeled `REFRESHED_RECONSTRUCTION_AUDIT_NOT_ORIGINAL_V18_SAMPLE`.
 
-The formal decision was `NO_EXTERNAL_REGIME_REPLICATION_EVIDENCE`.
+For the cost-aware reconstruction, naive trading returned -9.1269% with Sharpe -1.443, maximum drawdown -13.4355% and turnover 115. The cost-aware rule returned +0.3350% with Sharpe +0.629, maximum drawdown -0.7536% and turnover 6. The paired moving-block bootstrap 95% confidence interval for the mean cost-aware-minus-naive return was [-0.0002727, +0.0005571], which crossed zero. Thus the economic attenuation of turnover and drawdown did not constitute statistically supported incremental alpha.
 
-Thus, the external experiment did not validate a generalizable regime-conditioned Ichimoku edge. It did, however, show that conditioning can materially alter turnover, exposure and drawdown, which remains useful as a risk-management research question.
+For the corrected regime-construction audit, ten OKX symbols were evaluated. Plain cross-sectional Ichimoku returned -43.1233% with Sharpe -0.671, maximum drawdown -65.1716% and turnover 506.67. Market-regime conditioning returned -34.9873% with Sharpe -0.956, maximum drawdown -59.3142% and turnover 362.67. Although the conditioned strategy lost less in aggregate, its Sharpe was worse and the paired bootstrap 95% interval for conditioned-minus-plain mean return [-0.0005344, +0.0005803] crossed zero. The result is therefore labeled `RETROSPECTIVE_CONSTRUCTION_AUDIT_NOT_FRESH_REPLICATION` and is not promotion evidence.
 
-## 4.9 Cross-stage interpretation
+## 4.10 v0.19 — Prospective multi-venue microstructure measurement infrastructure
+
+The next fresh evidence stream was separated from the retrospective audit. v0.19 created a prospective public-REST measurement layer for BTC/USDT and ETH/USDT across CoinEx, OKX and KuCoin.
+
+The measurement contract fixes the trading/forecast horizon at 4 hours while sampling microstructure at a target 30-minute cadence. Each venue's reported trade flow is summarized only inside a 60-second point-in-time interval ending at the order-book observation timestamp. Trades returned after that timestamp are excluded. The implementation records trade staleness, raw/recent trade counts, exact quote-notional book depth and cross-venue clock skew. Exchange-reported trade `side` is explicitly labeled `exchange_reported_side_unverified_aggressor`; it is not treated as validated aggressor ground truth.
+
+The final infrastructure audit also closed three subtle integrity defects: cross-venue coverage now counts unique venues rather than observations; duplicate-provider observations trigger a fail-closed quality flag; and missing configured symbols are materialized as explicit insufficient-coverage rows instead of being silently absent. Stored trade-window start/end timestamps are also checked against the frozen PIT interval.
+
+GitHub Actions run `34474370382` passed the deterministic audit/maturity tests, refreshed public-data audit, live public fixed-window collector smoke test and fail-closed measurement contract. Artifact `10150943098` has digest `sha256:d8b70ebc58c4d2ed59e0590c8c071ef6eb9dab0895d3308392b69ffc250f794a`.
+
+The verified smoke snapshot contained six observations with zero provider failures. BTC and ETH each had three unique accepted venues and passed the point-in-time quality gates. This demonstrates collector and evidence-contract operation only; it is not predictive or profitability evidence.
+
+Phase Q remains `FORWARD_SAMPLE_IMMATURE`. The pre-registered maturity requirement is at least 168 elapsed hours, 336 nominal 30-minute measurement opportunities and at least 80% authorized coverage for both BTC and ETH. Only after this gate passes may the 4h microstructure aggregation rule be frozen and later evaluated in the planned `PRICE_ONLY` versus `PRICE_PLUS_MICROSTRUCTURE` ablation on at least 250 independent 4h decision timestamps.
+
+## 4.11 Cross-stage interpretation
 
 The combined results reveal a consistent methodological pattern:
 
@@ -98,20 +112,23 @@ The combined results reveal a consistent methodological pattern:
 - stronger inference overturned superficially attractive model-selection conclusions;
 - a theoretically strong derivatives feature family did not automatically create incremental holdout alpha;
 - transaction costs and turnover materially influenced economic outcomes;
-- cost-aware abstention reduced turnover/drawdown but did not clear the statistical alpha gate;
-- external regime conditioning reduced aggregate loss/drawdown but failed cross-asset/statistical replication;
-- prospective operation must be kept separate from historical optimization.
+- cost-aware abstention repeatedly reduced trading intensity and downside exposure, but has not cleared a valid statistical alpha gate;
+- the first v0.18 regime experiment was itself found to have hypothesis-fidelity defects, demonstrating why reproducible portfolio geometry is part of the scientific method;
+- a healthy microstructure collector snapshot is data-quality evidence, not alpha evidence;
+- prospective operation must remain separate from historical optimization.
 
 The project therefore supports an evidence-gated architecture in which complexity is promoted only when it survives increasingly strict validation.
 
-## 4.10 Search-aware statistical interpretation
+## 4.12 Search-aware statistical interpretation
 
-The next candidate-search cycle should extend the current bootstrap/FDR/CPCV infrastructure with an explicit registry of every tried strategy. This enables stronger control of research degrees of freedom through tools such as White’s Reality Check, Hansen’s SPA test, Deflated/Probabilistic Sharpe analysis and Probability of Backtest Overfitting where the data design is appropriate.
+The next candidate-search cycle should extend the current bootstrap/FDR/CPCV infrastructure with an explicit registry of every tried strategy. This enables stronger control of research degrees of freedom through tools such as White's Reality Check, Hansen's SPA test, Deflated/Probabilistic Sharpe analysis and Probability of Backtest Overfitting where the data design is appropriate.
 
 The purpose is not to maximize the number of statistical tests in the thesis. The purpose is to prevent a final selected model from receiving credit for a Sharpe ratio that is partly a consequence of repeated search.
 
-## 4.11 Final result statement for the current thesis state
+## 4.13 Final result statement for the current thesis state
 
-The implemented system is operational as a modular cryptocurrency trading-research and forward PAPER platform. It has demonstrated reproducible data processing, cost-aware OOS evaluation, robustness inference, untouched-holdout testing, external hypothesis replication, independent risk control, persistent paper execution and prospective evidence capture. However, no learned candidate through v0.12 has established stable incremental alpha, neither v0.18 hypothesis cleared its statistical promotion gate, and the prospective v0.15-v0.16 forward sample remains below the pre-registered minimum.
+The implemented system is operational as a modular cryptocurrency trading-research and forward PAPER platform. It has demonstrated reproducible data processing, cost-aware OOS evaluation, robustness inference, untouched-holdout testing, independent risk control, persistent paper execution, prospective evidence capture and a point-in-time multi-venue microstructure measurement layer with explicit integrity gates.
+
+However, no learned candidate through v0.12 has established stable incremental alpha; neither the original v0.18 hypotheses nor the v0.19 corrected retrospective audits justify promotion; and the v0.15-v0.16 PAPER and v0.19 microstructure forward samples remain below their pre-registered maturity requirements.
 
 Accordingly, the defensible conclusion is that the project demonstrates a rigorous and operational AI-assisted trading research framework, while profitability, stable risk-adjusted alpha and real-money LIVE readiness remain unproven at the current evidence depth.
