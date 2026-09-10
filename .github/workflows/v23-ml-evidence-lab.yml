@@ -1,0 +1,59 @@
+name: v23-ml-evidence-lab
+
+on:
+  push:
+    branches: [research/v23-ml-evidence-lab]
+    paths:
+      - "research_bot/ml_evidence_v23.py"
+      - "scripts/run_v23_ml_evidence_lab.py"
+      - "tests/test_ml_evidence_v23.py"
+      - ".github/workflows/v23-ml-evidence-lab.yml"
+  pull_request:
+    paths:
+      - "research_bot/ml_evidence_v23.py"
+      - "scripts/run_v23_ml_evidence_lab.py"
+      - "tests/test_ml_evidence_v23.py"
+      - ".github/workflows/v23-ml-evidence-lab.yml"
+  workflow_dispatch:
+
+jobs:
+  integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Causality, split, calibration and risk tests
+        run: pytest -q tests/test_ml_evidence_v23.py
+
+  strict-ml-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e '.[dev,ml,deep]'
+      - name: Run strict classical plus deep ML selection and frozen final/external test
+        run: |
+          PYTHONPATH=. python scripts/run_v23_ml_evidence_lab.py \
+            --output-dir artifacts/v23-ml-evidence-lab \
+            --symbols BTC/USDT,ETH/USDT,SOL/USDT,XRP/USDT,ADA/USDT \
+            --bars 4200 \
+            --external-bars 2600 \
+            --external-exchange okx \
+            --deep-epochs 6 \
+            --deep-seeds 314,2718,1618
+      - name: Upload v0.23 ML evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v23-ml-evidence-lab
+          path: artifacts/v23-ml-evidence-lab/
+          if-no-files-found: warn
+          retention-days: 30
