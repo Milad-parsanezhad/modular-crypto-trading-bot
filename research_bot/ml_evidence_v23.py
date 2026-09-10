@@ -15,7 +15,6 @@ Scientific contract
 """
 
 from dataclasses import asdict, dataclass
-from typing import Iterable
 import math
 
 import numpy as np
@@ -106,7 +105,7 @@ def build_v23_rows(frame: pd.DataFrame, symbol: str, cfg: MLV23Config | None = N
     if len(f) < min_history + cfg.target_horizon_bars + 10:
         raise ValueError("insufficient history for v0.23")
     opens = pd.to_numeric(f["open"], errors="coerce").to_numpy(float)
-    rows = f.loc[min_history - 1: len(f) - cfg.target_horizon_bars - 1, ["timestamp", "atr_pct", *TABULAR_FEATURES]].copy()
+    rows = f.loc[min_history - 1: len(f) - cfg.target_horizon_bars - 1, ["timestamp", *TABULAR_FEATURES]].copy()
     idx = rows.index.to_numpy(int)
     gross = opens[idx + cfg.target_horizon_bars] / opens[idx + 1] - 1.0
     rows["symbol"] = symbol
