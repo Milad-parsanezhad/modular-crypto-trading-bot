@@ -1,0 +1,57 @@
+name: v21-labeled-ml-meta
+
+on:
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "research_bot/ml_meta_v21.py"
+      - "scripts/run_v21_labeled_ml_meta_lab.py"
+      - "tests/test_ml_meta_v21.py"
+      - "docs/V21_LABELED_ML_META_PROTOCOL.md"
+      - ".github/workflows/v21-labeled-ml-meta.yml"
+      - "research_bot/multitimeframe_strategies_v20.py"
+  workflow_dispatch:
+
+jobs:
+  ml-integrity-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Regression + causal + ML leakage tests
+        run: |
+          pytest -q \
+            tests/test_multitimeframe_strategies_v19.py \
+            tests/test_multitimeframe_strategies_v20.py \
+            tests/test_ml_meta_v21.py
+
+  full-labeled-model-tournament:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install core + optional gradient-boosting model zoo
+        run: python -m pip install -e '.[dev,ml]'
+      - name: Build causal labeled dataset and train model zoo
+        run: |
+          PYTHONPATH=. python scripts/run_v21_labeled_ml_meta_lab.py \
+            --output-dir artifacts/v21-ml-meta \
+            --max-fit-rows 60000 \
+            --max-fit-rows-slow 12000 \
+            --min-selected-validation 200
+      - name: Upload labeled data, fitted models and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v21-labeled-ml-meta
+          path: artifacts/v21-ml-meta/
+          if-no-files-found: warn
+          retention-days: 30
