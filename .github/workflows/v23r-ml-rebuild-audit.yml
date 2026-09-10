@@ -8,6 +8,7 @@ on:
       - "scripts/run_v23r_ml_rebuild_audit.py"
       - "tests/test_ml_framework_v23r.py"
       - "tests/test_ml_audit_v23r.py"
+      - "tests/test_ml_audit_v23r_regressions.py"
       - "docs/V23R_ML_REBUILD_AUDIT_PROTOCOL.md"
       - ".github/workflows/v23r-ml-rebuild-audit.yml"
   workflow_dispatch:
@@ -26,7 +27,8 @@ jobs:
         run: |
           pytest -q \
             tests/test_ml_framework_v23r.py \
-            tests/test_ml_audit_v23r.py
+            tests/test_ml_audit_v23r.py \
+            tests/test_ml_audit_v23r_regressions.py
       - name: Re-run relevant v0.22d regression tests
         run: |
           pytest -q \
