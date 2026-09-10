@@ -5,6 +5,7 @@ from research_bot.forward_microstructure_v19 import (
     aggregate_symbol,
     observation_from_orderbook_and_trades,
 )
+from research_bot.integrity_v19 import finalize_payload_hash, payload_sha256
 from research_bot.venue_adapter_v19 import normalized_orderbook_limit
 
 
@@ -41,3 +42,13 @@ def test_cross_venue_clock_skew_is_quality_gated():
     assert out["feature_authorized"] is False
     assert "CROSS_VENUE_CLOCK_SKEW_TOO_LARGE" in out["quality_flags"]
     assert out["venue_clock_skew_seconds"] == 121.0
+
+
+def test_final_payload_hash_covers_late_metadata():
+    payload = {"value": 1, "generated_at": "t1"}
+    finalize_payload_hash(payload, "sha256")
+    first = payload["sha256"]
+    assert first == payload_sha256(payload, exclude_keys=("sha256",))
+    payload["generated_at"] = "t2"
+    finalize_payload_hash(payload, "sha256")
+    assert payload["sha256"] != first
