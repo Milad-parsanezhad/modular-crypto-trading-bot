@@ -1,0 +1,86 @@
+name: v23-clean-ml-rebuild
+
+on:
+  push:
+    branches:
+      - research/v23-ml-rebuild-clean
+    paths:
+      - "research_bot/ml_rebuild_v23.py"
+      - "research_bot/deep_rebuild_v23.py"
+      - "scripts/run_v23_ml_rebuild.py"
+      - "tests/test_ml_rebuild_v23.py"
+      - "tests/test_deep_rebuild_v23.py"
+      - "docs/V23_ML_REBUILD_PROTOCOL.md"
+      - ".github/workflows/v23-ml-rebuild.yml"
+      - "research_bot/ml_meta_v21.py"
+      - "research_bot/multitimeframe_strategies_v20.py"
+  workflow_dispatch:
+
+jobs:
+  core-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install core, ML boosters and test dependencies
+        run: python -m pip install -e '.[dev,ml]'
+      - name: Run strict ML data-contract and strategy regression tests
+        run: |
+          pytest -q \
+            tests/test_ml_rebuild_v23.py \
+            tests/test_ml_meta_v21.py \
+            tests/test_multitimeframe_strategies_v20.py
+
+  deep-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install deep-learning and test dependencies
+        run: python -m pip install -e '.[dev,deep]'
+      - name: Run temporal, localization and multimodal causality tests
+        run: |
+          pytest -q \
+            tests/test_deep_rebuild_v23.py \
+            tests/test_ict_localization_v22c.py \
+            tests/test_multimodal_fusion_v22d.py
+
+  historical-4h-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    needs: core-integrity
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install research and ML model zoo
+        run: python -m pip install -e '.[dev,ml]'
+      - name: Build fresh 4h labels and run validation-frozen ML tournament
+        run: |
+          PYTHONPATH=. python scripts/run_v23_ml_rebuild.py \
+            --output-dir artifacts/v23-ml-rebuild \
+            --timeframe 4h \
+            --bars 6000 \
+            --max-fit-rows 30000 \
+            --max-fit-rows-slow 8000 \
+            --min-selected-validation 100 \
+            --min-selected-test 60 \
+            --bootstrap-resamples 300
+      - name: Upload dataset, provenance, leaderboards, fitted models and decision
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v23-clean-ml-rebuild
+          path: artifacts/v23-ml-rebuild/
+          if-no-files-found: warn
+          retention-days: 30
