@@ -1,0 +1,95 @@
+name: v19-audit-corrected-research
+
+on:
+  push:
+    branches: ["v19-audit-corrected-forward-microstructure"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  audit-and-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Run deterministic audit and maturity-gate tests
+        run: |
+          pytest -q \
+            tests/test_audit_v19.py \
+            tests/test_forward_microstructure_v19.py \
+            tests/test_v19_collector_helpers.py \
+            tests/test_trade_timestamp_v19.py \
+            tests/test_microstructure_quality_v19.py \
+            tests/test_forward_paper_v14.py \
+            tests/test_cost_regime_v18.py \
+            tests/test_evidence_ledger_v17.py \
+            tests/test_trial_registry_v17.py
+      - name: Run audit-corrected public-data research
+        run: |
+          python scripts/run_v19_audit.py --bars 1800 --output artifacts/v19/v19_audit.json --markdown artifacts/v19/V19_AUDIT_RESULTS.md
+      - name: Smoke prospective multi-venue fixed-window collector
+        run: |
+          python scripts/collect_v19_forward_microstructure.py \
+            --trade-window-seconds 60 \
+            --output artifacts/v19/forward_microstructure_snapshot.json
+      - name: Validate fail-closed scientific and measurement contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from research_bot.integrity_v19 import payload_sha256
+          from research_bot.microstructure_quality_v19 import evaluate_quality_gate
+
+          audit=json.loads(Path('artifacts/v19/v19_audit.json').read_text())
+          snap=json.loads(Path('artifacts/v19/forward_microstructure_snapshot.json').read_text())
+          assert audit['live_execution_authorized'] is False
+          assert audit['paper_strategy_replacement_authorized'] is False
+          assert audit['cost_audit']['promotion_authorized'] is False
+          assert audit['regime_audit']['promotion_authorized'] is False
+          assert audit['cost_audit']['evidence_status']=='REFRESHED_RECONSTRUCTION_AUDIT_NOT_ORIGINAL_V18_SAMPLE'
+          assert audit['cost_audit']['original_v18_raw_dataset_recoverable'] is False
+          assert audit['manifest_sha256']==payload_sha256(audit, exclude_keys=('manifest_sha256',))
+
+          assert snap['signal_authorized'] is False
+          assert snap['paper_strategy_replacement_authorized'] is False
+          assert snap['live_execution_authorized'] is False
+          assert snap['collection_rule']=='prospective_only_fixed_window_no_backfill_no_signal'
+          assert snap['measurement_contract']['primary_trading_horizon']=='4h'
+          assert snap['measurement_contract']['snapshot_measurement_frequency_target']=='30min'
+          assert snap['measurement_contract']['reported_trade_window_seconds']==60
+          assert snap['measurement_contract']['trade_side_semantics']=='exchange_reported_side_unverified_aggressor'
+          assert snap['measurement_contract']['rest_snapshot_not_event_stream'] is True
+          assert snap['snapshot_sha256']==payload_sha256(snap, exclude_keys=('snapshot_sha256',))
+          for row in snap['symbols']:
+              if row.get('feature_authorized'):
+                  assert row['venue_clock_skew_seconds'] <= snap['config']['max_venue_clock_skew_seconds']
+                  assert row['trade_window_seconds']==60
+                  assert row['trade_side_semantics']=='exchange_reported_side_unverified_aggressor'
+
+          q=evaluate_quality_gate(
+              [snap],
+              pilot_start_at=snap['generated_at'],
+              as_of=snap['generated_at'],
+          )
+          assert q['decision']=='GATE_Q_NOT_MATURE'
+          assert q['feature_predictive_modeling_authorized'] is False
+          assert q['live_execution_authorized'] is False
+          print('v0.19 fail-closed fixed-window contract validated')
+          PY
+      - name: Upload audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v19-audit-corrected-results
+          path: |
+            artifacts/v19/v19_audit.json
+            artifacts/v19/V19_AUDIT_RESULTS.md
+            artifacts/v19/forward_microstructure_snapshot.json
+          retention-days: 90
