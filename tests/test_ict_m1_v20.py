@@ -11,12 +11,12 @@ import sys
 
 from research_bot.ict_m1_v20 import (
     IctM1Config,
+    REPORTING_PERIODS,
     build_ict_m1_features,
     evaluate_ict_m1_variants,
     extract_ict_m1_setups,
     simulate_ict_m1_trades,
 )
-from scripts.run_ict_m1_lab_v20 import PERIODS
 
 
 def bullish_example() -> pd.DataFrame:
@@ -150,7 +150,7 @@ def test_invalid_ohlcv_fails_closed():
 
 
 def test_reporting_period_boundaries_are_explicit_utc():
-    for _, start, end in PERIODS:
+    for _, start, end in REPORTING_PERIODS:
         assert pd.Timestamp(start).tzinfo is not None
         assert pd.Timestamp(end).tzinfo is not None
 
