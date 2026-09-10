@@ -16,6 +16,7 @@ from research_bot.forward_microstructure_v19 import (
     build_snapshot,
     observation_from_orderbook_and_trades,
 )
+from research_bot.venue_adapter_v19 import normalized_orderbook_limit
 
 
 def _trade_totals(trades: pd.DataFrame) -> tuple[float, float, float, int]:
@@ -45,8 +46,6 @@ def _coinex_observation(symbol: str, cfg: V19MicrostructureConfig) -> VenueMicro
     depth = fetch_coinex_depth(symbol, limit=cfg.depth_levels)
     trades = fetch_coinex_market_deals(symbol, market_type="spot", pages=1, limit=cfg.trades_limit)
     buy, sell, unknown, count = _trade_totals(trades)
-    # Use exact sum(price * quantity) across the fetched depth levels. The v0.19
-    # smoke prototype previously approximated the entire book at best price.
     return VenueMicrostructureObservation(
         venue="coinex",
         symbol=symbol,
@@ -63,14 +62,6 @@ def _coinex_observation(symbol: str, cfg: V19MicrostructureConfig) -> VenueMicro
     )
 
 
-def _book_limit(exchange_id: str, requested: int) -> int:
-    """Normalize public order-book limits to venue-supported values."""
-    if exchange_id == "kucoin":
-        # CCXT KuCoin accepts 20 or 100 for fetchOrderBook.
-        return 20 if requested <= 20 else 100
-    return int(requested)
-
-
 def _ccxt_observations(exchange_id: str, symbols: tuple[str, ...], cfg: V19MicrostructureConfig) -> tuple[list[VenueMicrostructureObservation], list[dict]]:
     exchange = getattr(ccxt, exchange_id)({"enableRateLimit": True})
     observations: list[VenueMicrostructureObservation] = []
@@ -82,7 +73,7 @@ def _ccxt_observations(exchange_id: str, symbols: tuple[str, ...], cfg: V19Micro
                 failures.append({"venue": exchange_id, "symbol": symbol, "reason": "SYMBOL_NOT_LISTED"})
                 continue
             try:
-                limit = _book_limit(exchange_id, cfg.depth_levels)
+                limit = normalized_orderbook_limit(exchange_id, cfg.depth_levels)
                 book = exchange.fetch_order_book(symbol, limit=limit)
                 raw_trades = exchange.fetch_trades(symbol, limit=cfg.trades_limit)
                 trades = pd.DataFrame([
