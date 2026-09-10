@@ -16,29 +16,63 @@ on:
       - ".github/workflows/v22c-ict-localization.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "1"
+
 jobs:
   localization-integrity:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout immutable event SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 1
+          clean: true
+          persist-credentials: false
+      - name: Verify checkout provenance
+        run: test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-          cache: pip
-      - run: python -m pip install -e '.[dev,deep]'
+      - name: Install isolated localization dependencies
+        run: python -m pip install --no-cache-dir -e '.[dev,deep]'
+      - name: Dependency integrity
+        run: python -m pip check
       - name: Causality, alignment and localizer-shape tests
         run: pytest -q tests/test_ict_localization_v22c.py
 
   spatial-localization:
+    needs: localization-integrity
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout immutable event SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 1
+          clean: true
+          persist-credentials: false
+      - name: Verify checkout provenance
+        run: test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-          cache: pip
-      - run: python -m pip install -e '.[dev,deep]'
+      - name: Install isolated localization dependencies
+        run: python -m pip install --no-cache-dir -e '.[dev,deep]'
+      - name: Dependency integrity
+        run: python -m pip check
       - name: Train raw-candle ICT localizer on public 4h crypto history
         run: |
           PYTHONPATH=. python scripts/run_v22c_ict_localization.py \
@@ -51,11 +85,22 @@ jobs:
             --width 96 \
             --max-samples-per-symbol 480 \
             --epochs 5
+      - name: Persist exact source provenance
+        run: |
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+          python - <<'PY'
+          import json, os, pathlib, subprocess
+          root = pathlib.Path("artifacts/v22c-ict-localization")
+          actual = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          expected = os.environ["EXPECTED_SHA"]
+          assert actual == expected
+          (root / "ci_provenance.json").write_text(json.dumps({"expected_sha": expected, "actual_sha": actual, "run_id": os.environ.get("GITHUB_RUN_ID")}, indent=2), encoding="utf-8")
+          PY
       - name: Upload v0.22c localization evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: v22c-ict-localization
+          name: v22c-ict-localization-${{ github.run_id }}
           path: artifacts/v22c-ict-localization/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
