@@ -6,7 +6,7 @@ Status: **Engineering/scientific audit; original v0.18 artifact preserved; prosp
 
 ## Executive finding
 
-A second-pass audit found that v0.18 was correctly fail-closed, but several implementation/design details made its interpretation weaker than the headline tables suggested. A third measurement audit of the new v0.19 collector then found a cross-venue trade-window comparability defect before the prospective dataset matured. None of these defects reveals a hidden profitable strategy. They reinforce the decision to keep promotion closed until fresh evidence survives stricter data contracts.
+A second-pass audit found that v0.18 was correctly fail-closed, but several implementation/design details made its interpretation weaker than the headline tables suggested. A third measurement audit of the new v0.19 collector then found cross-venue trade-window, venue-counting and evidence-schema defects before the prospective dataset matured. None of these defects reveals a hidden profitable strategy. They reinforce the decision to keep promotion closed until fresh evidence survives stricter data contracts.
 
 ## Severity classification
 
@@ -25,6 +25,9 @@ A second-pass audit found that v0.18 was correctly fail-closed, but several impl
 | M5 | Variable semantics | High | exchange-reported `side` could be over-described as true aggressor classification | label explicitly as `exchange_reported_side_unverified_aggressor` |
 | M6 | Sampling design | High | one instantaneous REST snapshot every 4h under-sampled within-bar microstructure | target 30-minute measurement cadence while keeping the trading horizon frozen at 4h |
 | M7 | Payload integrity | High | an early prototype hash could be computed before late metadata were attached | canonical final-payload SHA-256 excluding only its self-referential hash field |
+| M8 | Cross-venue identity | **Critical** | accepted observations, rather than unique venues, could satisfy the venue-count gate | count unique venue names; deduplicate and fail closed on duplicate-provider observations |
+| M9 | Evidence schema/universe | High | insufficient-coverage rows were structurally thinner and a missing configured symbol could disappear from the snapshot | stable fail-closed schema + explicit configured-symbol materialization |
+| M10 | PIT metadata integrity | High | stored trade-window bounds were not independently validated against the frozen observation clock | validate `window_start=t-60s`, `window_end=t` and first/last trade timestamps |
 
 ## Important reproducibility correction
 
@@ -44,7 +47,7 @@ v0.18-B changed both elements: it turned the score into a per-asset binary `scor
 
 ## Why M4 is the most consequential prospective-collector bug
 
-The first multi-venue snapshot used a fixed **count** of recent public trades rather than a fixed **time interval**. That sounds harmless but is not. Public REST APIs and CCXT adapters can return different default histories and provider-specific caps. A list of 500 recent trades on one venue can represent seconds, while 100 trades on another venue can represent a materially different interval.
+The first multi-venue snapshot used a fixed **count** of recent public trades rather than a fixed **time interval**. Public REST APIs and CCXT adapters can return different default histories and provider-specific caps. A list of 500 recent trades on one venue can represent seconds, while 100 trades on another venue can represent a materially different interval.
 
 A cross-venue mean of those imbalances is therefore not a like-for-like measurement.
 
@@ -58,7 +61,19 @@ The repaired collector now:
 6. rejects venues with fewer than 5 recent trades or last-trade staleness above 30 seconds;
 7. preserves the exchange-reported side but does **not** silently promote it to validated aggressor ground truth.
 
-This converts the feature from “latest-N trade imbalance” into a much more defensible **fixed-window reported trade-flow snapshot**.
+This converts the feature from “latest-N trade imbalance” into a more defensible **fixed-window reported trade-flow snapshot**.
+
+## Why M8 matters even after M4 is fixed
+
+Cross-venue evidence is meaningful only when coverage represents distinct providers. Counting observations instead of unique venue identifiers creates a subtle pseudo-replication failure: two observations from CoinEx are not two independent venues. The final v0.19 implementation therefore groups valid observations by venue, retains only the latest valid observation per venue for diagnostics, records `accepted_venue_names`, and places the whole symbol under a fail-closed `DUPLICATE_VENUE_OBSERVATIONS` quality flag when a duplicate-provider condition is detected.
+
+The regression suite now proves both cases: duplicates cannot manufacture the minimum venue count, and duplicates cannot silently pass even when another valid venue is present.
+
+## Stable fail-closed schema and universe materialization
+
+A second subtle integrity risk was schema asymmetry. Earlier insufficient-venue rows did not expose all normal quality fields, which could cause downstream evaluators to fail or, worse, special-case missing values inconsistently. v0.19 now emits the same core diagnostic keys for insufficient coverage, with `None` where a statistic is not valid.
+
+The configured universe is also explicit. If BTC or ETH has no usable observations in a collection cycle, the symbol remains in the snapshot with `NO_OBSERVATIONS_FOR_CONFIGURED_SYMBOL`; it cannot disappear and thereby improve measured coverage through omission.
 
 ## Sampling-frequency correction
 
@@ -81,7 +96,7 @@ Literature informs the hypothesis; only this project's prospective data can deci
 ## Remaining known limitations, not bugs
 
 - The current multi-venue flow is a crypto-exchange order-flow proxy, **not** the same “world order flow” used by Anastasopoulos et al. (2026).
-- Public REST history can still be provider-capped; the new fixed-window metadata exposes recent-count/staleness and prevents silent interpretation as a complete consolidated tape.
+- Public REST history can still be provider-capped; the fixed-window metadata exposes recent-count/staleness and prevents silent interpretation as a complete consolidated tape.
 - Exchange-reported trade `side` is retained as reported data. Until venue-specific semantics are independently verified, the variable is called **reported trade imbalance**, not definitive buyer/seller aggressor ground truth.
 - Top-of-book/depth snapshots are discrete REST observations, not reconstructed full event streams. L2/L3 historical/event-stream claims are prohibited.
 - A constant 12-bp backtest friction is a controlled comparison assumption, not a complete realized implementation-shortfall model. Spread/slippage/impact sensitivity remains required for any candidate approaching promotion.
@@ -94,7 +109,7 @@ More research is required, but it should target **measurement fidelity, prospect
 Priority order:
 
 1. complete at least 7 elapsed days of dense prospective microstructure measurement;
-2. audit fixed-window recent-trade coverage, staleness, venue coverage, scheduler delay and timestamp synchronization;
+2. audit fixed-window recent-trade coverage, staleness, unique-venue coverage, scheduler delay and timestamp synchronization;
 3. aggregate sub-4h measurements into a pre-registered 4h feature vector without changing the target horizon;
 4. accumulate at least 250 independent quality-filtered 4h decision timestamps before a new predictive comparison;
 5. freeze price-only versus price+microstructure candidates and register every trial before evaluation;
