@@ -12,7 +12,7 @@ def run(cmd, cwd=None):
     subprocess.run(cmd, cwd=cwd, check=True, capture_output=True, text=True)
 
 
-def make_remote(tmp_path: Path) -> tuple[Path, str]:
+def make_remote(tmp_path: Path) -> tuple[Path, str, str]:
     src = tmp_path / "src"
     bare = tmp_path / "remote.git"
     src.mkdir()
@@ -27,27 +27,30 @@ def make_remote(tmp_path: Path) -> tuple[Path, str]:
     (src / "research.txt").write_text("research\n", encoding="utf-8")
     run(["git", "add", "."], src)
     run(["git", "commit", "-m", "research"], src)
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=src, text=True).strip()
     run(["git", "clone", "--bare", str(src), str(bare)], tmp_path)
-    return bare, "research/test"
+    return bare, "research/test", head
 
 
 def test_direct_bootstrap_and_idempotent_reuse(tmp_path):
-    remote, branch = make_remote(tmp_path)
+    remote, branch, head = make_remote(tmp_path)
     dest = tmp_path / "checkout"
-    first = bootstrap_research_branch(str(remote), branch, dest, command_timeout_seconds=10)
+    first = bootstrap_research_branch(str(remote), branch, dest, command_timeout_seconds=10, expected_commit=head)
     assert first.ok is True
     assert first.status == "READY"
     assert (dest / "research.txt").exists()
 
-    second = bootstrap_research_branch(str(remote), branch, dest, command_timeout_seconds=10)
+    second = bootstrap_research_branch(str(remote), branch, dest, command_timeout_seconds=10, expected_commit=head)
     assert second.ok is True
     assert second.method == "reuse"
     current = subprocess.check_output(["git", "branch", "--show-current"], cwd=dest, text=True).strip()
+    actual = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=dest, text=True).strip()
     assert current == branch
+    assert actual == head
 
 
 def test_dirty_checkout_is_never_reset(tmp_path):
-    remote, branch = make_remote(tmp_path)
+    remote, branch, _ = make_remote(tmp_path)
     dest = tmp_path / "checkout"
     assert bootstrap_research_branch(str(remote), branch, dest, command_timeout_seconds=10).ok
     p = dest / "research.txt"
@@ -59,13 +62,38 @@ def test_dirty_checkout_is_never_reset(tmp_path):
 
 
 def test_missing_branch_fails_without_retry_loop(tmp_path):
-    remote, _ = make_remote(tmp_path)
+    remote, _, _ = make_remote(tmp_path)
     started = time.monotonic()
     result = bootstrap_research_branch(str(remote), "research/does-not-exist", tmp_path / "missing", command_timeout_seconds=5)
     elapsed = time.monotonic() - started
     assert result.ok is False
     assert result.status == "BRANCH_NOT_FOUND_OR_REMOTE_UNREACHABLE"
     assert elapsed < 5
+
+
+def test_expected_head_mismatch_fails_closed(tmp_path):
+    remote, branch, _ = make_remote(tmp_path)
+    dest = tmp_path / "checkout"
+    result = bootstrap_research_branch(
+        str(remote), branch, dest,
+        command_timeout_seconds=10,
+        expected_commit="0" * 40,
+    )
+    assert result.ok is False
+    assert result.status == "HEAD_MISMATCH"
+    assert "HEAD_MISMATCH" in result.message
+
+
+def test_nonempty_nonrepo_destination_is_never_deleted(tmp_path):
+    remote, branch, _ = make_remote(tmp_path)
+    dest = tmp_path / "important"
+    dest.mkdir()
+    sentinel = dest / "do-not-delete.txt"
+    sentinel.write_text("preserve me", encoding="utf-8")
+    result = bootstrap_research_branch(str(remote), branch, dest, command_timeout_seconds=10)
+    assert result.ok is False
+    assert result.status == "DESTINATION_NOT_EMPTY"
+    assert sentinel.read_text(encoding="utf-8") == "preserve me"
 
 
 def test_command_timeout_opens_instead_of_hanging():
