@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from hashlib import sha256
 import json
 from math import isfinite
@@ -90,19 +91,56 @@ def _utc_timestamp(value) -> pd.Timestamp:
     return ts
 
 
-def _coerce_trade_timestamp(series: pd.Series) -> pd.Series:
-    """Coerce provider/CCXT trade timestamps to UTC without guessing future data.
+def _numeric_timestamp_to_utc(value: float) -> pd.Timestamp:
+    """Parse Unix timestamps defensively across seconds/ms/us/ns magnitudes."""
+    x = float(value)
+    if not np.isfinite(x):
+        return pd.NaT
+    a = abs(x)
+    if a >= 1e17:
+        unit = "ns"
+    elif a >= 1e14:
+        unit = "us"
+    elif a >= 1e11:
+        unit = "ms"
+    elif a >= 1e8:
+        unit = "s"
+    else:
+        return pd.NaT
+    return pd.to_datetime(x, unit=unit, utc=True, errors="coerce")
 
-    Numeric timestamps are treated as milliseconds, which matches the unified CCXT
-    public trade schema used by the collector. Datetime-like values are parsed
-    directly. Unparseable rows become NaT and are excluded from the fixed window.
+
+def _coerce_trade_timestamp(series: pd.Series) -> pd.Series:
+    """Coerce mixed provider/CCXT timestamps to UTC without unit leakage.
+
+    Pandas can coerce timezone-aware datetimes to nanosecond integers. Treating
+    those integers as milliseconds moves valid observations far into the future.
+    This parser therefore handles datetime objects directly and infers numeric
+    Unix units from magnitude (s/ms/us/ns) item-by-item.
     """
-    if series.empty:
-        return pd.Series([], dtype="datetime64[ns, UTC]", index=series.index)
-    numeric = pd.to_numeric(series, errors="coerce")
-    parsed_numeric = pd.to_datetime(numeric, unit="ms", utc=True, errors="coerce")
-    parsed_text = pd.to_datetime(series, utc=True, errors="coerce")
-    return parsed_numeric.where(numeric.notna(), parsed_text)
+    out = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns, UTC]")
+    for idx, value in series.items():
+        if value is None or (isinstance(value, float) and np.isnan(value)):
+            continue
+        try:
+            if isinstance(value, (pd.Timestamp, datetime, np.datetime64)):
+                out.loc[idx] = _utc_timestamp(value)
+                continue
+            if isinstance(value, (int, float, np.integer, np.floating)):
+                out.loc[idx] = _numeric_timestamp_to_utc(float(value))
+                continue
+            text = str(value).strip()
+            if not text:
+                continue
+            try:
+                number = float(text)
+            except ValueError:
+                out.loc[idx] = pd.to_datetime(text, utc=True, errors="coerce")
+            else:
+                out.loc[idx] = _numeric_timestamp_to_utc(number)
+        except Exception:
+            out.loc[idx] = pd.NaT
+    return out
 
 
 def summarize_trade_window(
@@ -300,7 +338,6 @@ def aggregate_symbol(observations: Iterable[VenueMicrostructureObservation], cfg
             "spread_bps": x.spread_bps,
             "depth_imbalance": x.depth_imbalance,
             "reported_trade_imbalance": x.trade_imbalance,
-            # Backward-compatible alias. Interpretation is explicitly provider-reported side.
             "trade_imbalance": x.trade_imbalance,
             "signed_trade_coverage": x.signed_trade_coverage,
         }
@@ -330,8 +367,11 @@ def aggregate_symbol(observations: Iterable[VenueMicrostructureObservation], cfg
     clocks = pd.to_datetime([x.observed_at for x, _ in accepted], utc=True, errors="coerce")
     if clocks.isna().any():
         clock_skew_seconds = float("inf")
+        observed_min = observed_max = None
     else:
         clock_skew_seconds = float((clocks.max() - clocks.min()).total_seconds())
+        observed_min = clocks.min().isoformat()
+        observed_max = clocks.max().isoformat()
 
     signs = [np.sign(x) for x in trade_imbalances if x != 0]
     sign_agreement = float(abs(sum(signs)) / len(signs)) if signs else 0.0
@@ -350,6 +390,8 @@ def aggregate_symbol(observations: Iterable[VenueMicrostructureObservation], cfg
         "status": "OK" if feature_authorized else "QUALITY_GATED",
         "accepted_venues": len(accepted),
         "required_venues": cfg.min_venues_per_symbol,
+        "observed_at_min": observed_min,
+        "observed_at_max": observed_max,
         "median_mid": median_mid,
         "mid_dispersion_bps": mid_dispersion_bps,
         "venue_clock_skew_seconds": clock_skew_seconds,
