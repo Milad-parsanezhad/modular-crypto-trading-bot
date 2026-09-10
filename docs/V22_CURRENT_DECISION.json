@@ -1,0 +1,16 @@
+{
+  "version": "v0.22-v0.22b",
+  "branch": "research/v22-ict-vision-lab",
+  "baseline_integrity": "PASS_6_OF_6",
+  "baseline_scientific_decision": "NO_VISION_ENCODER_PROMOTED_BASELINE",
+  "baseline_small_cnn_validation_weak_macro_f1": 0.07919014874675225,
+  "baseline_small_cnn_validation_outcome_auc": 0.4949074074074074,
+  "baseline_small_cnn_test_weak_macro_f1": 0.0850851362307838,
+  "baseline_small_cnn_test_outcome_auc": 0.4808362369337979,
+  "v22b_integrity": "PASS",
+  "v22b_model_tournament": "IN_PROGRESS_AT_SNAPSHOT",
+  "vision_to_trading_policy_connected": false,
+  "vision_to_rl_state_connected": false,
+  "paper_replacement_authorized": false,
+  "live_execution_authorized": false
+}
