@@ -18,6 +18,8 @@ class DepthSnapshot:
     bid_depth: float
     ask_depth: float
     imbalance: float
+    bid_depth_notional: float = 0.0
+    ask_depth_notional: float = 0.0
 
 
 def fetch_coinex_depth(symbol: str, limit: int = 5, interval: str = "0.01") -> DepthSnapshot:
@@ -38,8 +40,14 @@ def fetch_coinex_depth(symbol: str, limit: int = 5, interval: str = "0.01") -> D
     if bid <= 0 or ask <= 0 or ask < bid:
         raise RuntimeError(f"Invalid CoinEx depth for {market}: bid={bid} ask={ask}")
     mid = (bid + ask) / 2.0
+
+    # Quantities are kept in base-asset units for execution sizing, while the
+    # exact sum(price * quantity) is retained separately for cross-venue
+    # microstructure comparisons. Do not approximate all levels at best price.
     bid_depth = float(sum(float(x[1]) for x in bids))
     ask_depth = float(sum(float(x[1]) for x in asks))
+    bid_depth_notional = float(sum(float(x[0]) * float(x[1]) for x in bids))
+    ask_depth_notional = float(sum(float(x[0]) * float(x[1]) for x in asks))
     denom = bid_depth + ask_depth
     imbalance = (bid_depth - ask_depth) / denom if denom > 0 else 0.0
     ts_ms = (depth.get("updated_at") or data.get("updated_at"))
@@ -58,4 +66,6 @@ def fetch_coinex_depth(symbol: str, limit: int = 5, interval: str = "0.01") -> D
         bid_depth=bid_depth,
         ask_depth=ask_depth,
         imbalance=float(np.clip(imbalance, -1.0, 1.0)),
+        bid_depth_notional=bid_depth_notional,
+        ask_depth_notional=ask_depth_notional,
     )
