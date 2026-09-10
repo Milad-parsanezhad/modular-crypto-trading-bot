@@ -1,0 +1,59 @@
+name: v23r-ml-rebuild-audit
+
+on:
+  pull_request:
+    paths:
+      - "research_bot/ml_framework_v23r.py"
+      - "research_bot/ml_audit_v23r.py"
+      - "scripts/run_v23r_ml_rebuild_audit.py"
+      - "tests/test_ml_framework_v23r.py"
+      - "tests/test_ml_audit_v23r.py"
+      - "docs/V23R_ML_REBUILD_AUDIT_PROTOCOL.md"
+      - ".github/workflows/v23r-ml-rebuild-audit.yml"
+  workflow_dispatch:
+
+jobs:
+  deterministic-audit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Run clean ML framework and audit tests
+        run: |
+          pytest -q \
+            tests/test_ml_framework_v23r.py \
+            tests/test_ml_audit_v23r.py
+      - name: Re-run relevant v0.22d regression tests
+        run: |
+          pytest -q \
+            tests/test_scientific_liquidity_wyckoff_v22d.py \
+            tests/test_multimodal_fusion_v22d.py
+
+  real-data-4h-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Run CoinEx 4h causal ML audit and supervised/unsupervised smoke
+        run: |
+          PYTHONPATH=. python scripts/run_v23r_ml_rebuild_audit.py \
+            --output-dir artifacts/v23r-ml-rebuild-audit \
+            --symbols BTC/USDT,ETH/USDT,SOL/USDT \
+            --bars 2600
+      - name: Upload audit and ML evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v23r-ml-rebuild-audit
+          path: artifacts/v23r-ml-rebuild-audit/
+          if-no-files-found: warn
+          retention-days: 30
