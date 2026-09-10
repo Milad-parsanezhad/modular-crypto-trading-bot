@@ -18,23 +18,57 @@ from research_bot.forward_microstructure_v19 import (
 )
 
 
+def _trade_totals(trades: pd.DataFrame) -> tuple[float, float, float, int]:
+    buy = sell = unknown = 0.0
+    count = 0
+    if trades is None or trades.empty:
+        return buy, sell, unknown, count
+    x = trades.copy()
+    if "notional" not in x:
+        x["notional"] = pd.to_numeric(x["price"], errors="coerce") * pd.to_numeric(x["amount"], errors="coerce")
+    for row in x.itertuples(index=False):
+        notion = float(getattr(row, "notional", 0.0) or 0.0)
+        if notion < 0:
+            continue
+        side = str(getattr(row, "side", "") or "").lower()
+        count += 1
+        if side == "buy":
+            buy += notion
+        elif side == "sell":
+            sell += notion
+        else:
+            unknown += notion
+    return buy, sell, unknown, count
+
+
 def _coinex_observation(symbol: str, cfg: V19MicrostructureConfig) -> VenueMicrostructureObservation:
     depth = fetch_coinex_depth(symbol, limit=cfg.depth_levels)
     trades = fetch_coinex_market_deals(symbol, market_type="spot", pages=1, limit=cfg.trades_limit)
-    # DepthSnapshot stores aggregate base-asset quantity. Preserve that unit here;
-    # observation_from_orderbook_and_trades converts price * quantity to quote notional.
-    bids = [[depth.best_bid, depth.bid_depth]]
-    asks = [[depth.best_ask, depth.ask_depth]]
-    return observation_from_orderbook_and_trades(
+    buy, sell, unknown, count = _trade_totals(trades)
+    # Use exact sum(price * quantity) across the fetched depth levels. The v0.19
+    # smoke prototype previously approximated the entire book at best price.
+    return VenueMicrostructureObservation(
         venue="coinex",
         symbol=symbol,
         observed_at=depth.timestamp.isoformat(),
-        bids=bids,
-        asks=asks,
-        trades=trades,
+        best_bid=depth.best_bid,
+        best_ask=depth.best_ask,
+        bid_depth_notional=depth.bid_depth_notional,
+        ask_depth_notional=depth.ask_depth_notional,
+        trade_buy_notional=buy,
+        trade_sell_notional=sell,
+        trade_unknown_notional=unknown,
+        trade_count=count,
         source="coinex_public_depth_and_deals",
-        levels=1,
     )
+
+
+def _book_limit(exchange_id: str, requested: int) -> int:
+    """Normalize public order-book limits to venue-supported values."""
+    if exchange_id == "kucoin":
+        # CCXT KuCoin accepts 20 or 100 for fetchOrderBook.
+        return 20 if requested <= 20 else 100
+    return int(requested)
 
 
 def _ccxt_observations(exchange_id: str, symbols: tuple[str, ...], cfg: V19MicrostructureConfig) -> tuple[list[VenueMicrostructureObservation], list[dict]]:
@@ -48,7 +82,8 @@ def _ccxt_observations(exchange_id: str, symbols: tuple[str, ...], cfg: V19Micro
                 failures.append({"venue": exchange_id, "symbol": symbol, "reason": "SYMBOL_NOT_LISTED"})
                 continue
             try:
-                book = exchange.fetch_order_book(symbol, limit=cfg.depth_levels)
+                limit = _book_limit(exchange_id, cfg.depth_levels)
+                book = exchange.fetch_order_book(symbol, limit=limit)
                 raw_trades = exchange.fetch_trades(symbol, limit=cfg.trades_limit)
                 trades = pd.DataFrame([
                     {
