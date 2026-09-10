@@ -1,0 +1,56 @@
+name: v19-multitimeframe-strategy-tournament
+
+on:
+  pull_request:
+    paths:
+      - "research_bot/multitimeframe_strategies_v19.py"
+      - "scripts/run_v19_multitimeframe_tournament.py"
+      - "tests/test_multitimeframe_strategies_v19.py"
+      - "docs/V19_SOURCE_DERIVED_MULTITIMEFRAME_PROTOCOL.md"
+      - ".github/workflows/v19-strategy-tournament.yml"
+  push:
+    branches: [main]
+    paths:
+      - "research_bot/multitimeframe_strategies_v19.py"
+      - "scripts/run_v19_multitimeframe_tournament.py"
+      - "tests/test_multitimeframe_strategies_v19.py"
+      - "docs/V19_SOURCE_DERIVED_MULTITIMEFRAME_PROTOCOL.md"
+      - ".github/workflows/v19-strategy-tournament.yml"
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Causal v0.19 tests
+        run: pytest -q tests/test_multitimeframe_strategies_v19.py
+
+  full-public-tournament:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Run frozen 30-candidate multi-timeframe tournament
+        run: |
+          PYTHONPATH=. python scripts/run_v19_multitimeframe_tournament.py \
+            --min-pretest-trades 1000 \
+            --min-test-trades 200 \
+            --output-dir artifacts/v19-multitimeframe
+      - name: Upload tournament evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v19-multitimeframe-tournament
+          path: artifacts/v19-multitimeframe/
+          if-no-files-found: warn
