@@ -3,16 +3,21 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from research_bot.meta_gate_v21 import MetaLabelGate
+
+
+CATS = ["strategy", "family", "timeframe", "symbol", "side"]
 
 
 def _write_manifest(path):
     (path / "dataset_manifest.json").write_text(json.dumps({
         "numeric_features": ["f_x"],
-        "categorical_features": ["strategy", "family", "timeframe", "symbol", "side"],
+        "categorical_features": CATS,
     }), encoding="utf-8")
 
 
@@ -43,17 +48,19 @@ def test_gate_rejects_unsafe_live_metadata(tmp_path):
 def test_promoted_gate_scores_one_event_but_never_authorizes_live(tmp_path):
     _write_manifest(tmp_path)
     models = tmp_path / "models"; models.mkdir()
-    x = pd.DataFrame({"f_x": [-2.0, -1.0, 1.0, 2.0], "strategy": ["S"] * 4, "family": ["F"] * 4, "timeframe": ["4h"] * 4, "symbol": ["BTC/USDT"] * 4, "side": [1] * 4})
+    x = pd.DataFrame({
+        "f_x": [-2.0, -1.0, 1.0, 2.0], "strategy": ["S"] * 4,
+        "family": ["F"] * 4, "timeframe": ["4h"] * 4,
+        "symbol": ["BTC/USDT"] * 4, "side": [1] * 4,
+    })
     y = np.array([0, 0, 1, 1])
-    # This small fixture intentionally uses only f_x; categorical columns are
-    # accepted by the runtime event but the saved pipeline selects the numeric input.
-    model = Pipeline([("model", LogisticRegression(random_state=314))])
-    model.fit(x[["f_x"]], y)
-    # Wrapper so the fixture pipeline accepts the exact manifest columns.
-    class ManifestFixtureModel:
-        def __init__(self, inner): self.inner = inner
-        def predict_proba(self, frame): return self.inner.predict_proba(frame[["f_x"]])
-    joblib.dump(ManifestFixtureModel(model), models / "classifier_logistic.joblib")
+    prep = ColumnTransformer([
+        ("num", StandardScaler(), ["f_x"]),
+        ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), CATS),
+    ])
+    model = Pipeline([("prep", prep), ("model", LogisticRegression(random_state=314))])
+    model.fit(x, y)
+    joblib.dump(model, models / "classifier_logistic.joblib")
     (tmp_path / "champion.json").write_text(json.dumps({
         "decision": "FORWARD_PAPER_META_CANDIDATE", "champion": "logistic",
         "threshold": 0.5, "live_execution_authorized": False,
