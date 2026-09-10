@@ -26,14 +26,18 @@ jobs:
       - name: Run audit-corrected public-data research
         run: |
           python scripts/run_v19_audit.py --bars 1800 --output artifacts/v19/v19_audit.json --markdown artifacts/v19/V19_AUDIT_RESULTS.md
-      - name: Smoke prospective multi-venue collector
+      - name: Smoke prospective multi-venue fixed-window collector
         run: |
-          python scripts/collect_v19_forward_microstructure.py --output artifacts/v19/forward_microstructure_snapshot.json
-      - name: Validate fail-closed scientific contract
+          python scripts/collect_v19_forward_microstructure.py \
+            --trade-window-seconds 60 \
+            --output artifacts/v19/forward_microstructure_snapshot.json
+      - name: Validate fail-closed scientific and measurement contract
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
+          from research_bot.integrity_v19 import payload_sha256
+
           audit=json.loads(Path('artifacts/v19/v19_audit.json').read_text())
           snap=json.loads(Path('artifacts/v19/forward_microstructure_snapshot.json').read_text())
           assert audit['live_execution_authorized'] is False
@@ -42,15 +46,24 @@ jobs:
           assert audit['regime_audit']['promotion_authorized'] is False
           assert audit['cost_audit']['evidence_status']=='REFRESHED_RECONSTRUCTION_AUDIT_NOT_ORIGINAL_V18_SAMPLE'
           assert audit['cost_audit']['original_v18_raw_dataset_recoverable'] is False
+          assert audit['manifest_sha256']==payload_sha256(audit, exclude_keys=('manifest_sha256',))
+
           assert snap['signal_authorized'] is False
           assert snap['paper_strategy_replacement_authorized'] is False
           assert snap['live_execution_authorized'] is False
-          assert len(audit['manifest_sha256']) == 64
-          assert len(snap['snapshot_sha256']) == 64
+          assert snap['collection_rule']=='prospective_only_fixed_window_no_backfill_no_signal'
+          assert snap['measurement_contract']['primary_trading_horizon']=='4h'
+          assert snap['measurement_contract']['snapshot_measurement_frequency_target']=='30min'
+          assert snap['measurement_contract']['reported_trade_window_seconds']==60
+          assert snap['measurement_contract']['trade_side_semantics']=='exchange_reported_side_unverified_aggressor'
+          assert snap['measurement_contract']['rest_snapshot_not_event_stream'] is True
+          assert snap['snapshot_sha256']==payload_sha256(snap, exclude_keys=('snapshot_sha256',))
           for row in snap['symbols']:
               if row.get('feature_authorized'):
                   assert row['venue_clock_skew_seconds'] <= snap['config']['max_venue_clock_skew_seconds']
-          print('v0.19 fail-closed contract validated')
+                  assert row['trade_window_seconds']==60
+                  assert row['trade_side_semantics']=='exchange_reported_side_unverified_aggressor'
+          print('v0.19 fail-closed fixed-window contract validated')
           PY
       - name: Upload audit evidence
         uses: actions/upload-artifact@v4
