@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import Callable
 import json
 
 import numpy as np
@@ -29,12 +29,11 @@ class AuditFinding:
 
 @dataclass(frozen=True)
 class AuditThresholds:
-    max_duplicate_timestamp_fraction: float = 0.0
+    max_duplicate_observation_fraction: float = 0.0
     max_feature_missing_fraction: float = 0.35
     max_constant_feature_fraction: float = 0.25
     min_binary_class_fraction: float = 0.05
     max_binary_class_fraction: float = 0.95
-    max_identity_only_auc_warning: float = 0.60
 
 
 def _finding(ok: bool, code: str, success: str, failure: str, *, severity: str = "ERROR") -> AuditFinding:
@@ -66,27 +65,40 @@ def audit_dataset(
     if timestamp_col not in df:
         findings.append(_finding(False, "TIMESTAMP_PRESENT", "", f"missing timestamp column {timestamp_col}"))
         report = pd.DataFrame([asdict(x) for x in findings])
-        return report, {"decision": "AUDIT_FAIL", "rows": int(len(df))}
+        return report, {"decision": "AUDIT_FAIL", "rows": int(len(df)), "fatal_codes": ["TIMESTAMP_PRESENT"]}
 
     ts = pd.to_datetime(df[timestamp_col], utc=True, errors="coerce")
     findings.append(_finding(not ts.isna().any(), "TIMESTAMP_PARSE", "timestamps parse cleanly", "unparseable timestamps exist"))
-    dup_frac = float(ts.duplicated().mean()) if len(ts) else 0.0
+
+    # In a multi-asset panel, repeating the same timestamp across symbols is expected.
+    # What is forbidden is a duplicate observation key: same symbol and timestamp
+    # (or same timestamp when symbol is unavailable).
+    key_cols = [timestamp_col]
+    if "symbol" in df.columns:
+        key_cols = ["symbol", timestamp_col]
+    dup_obs_frac = float(df.duplicated(key_cols).mean()) if len(df) else 0.0
     findings.append(_finding(
-        dup_frac <= thresholds.max_duplicate_timestamp_fraction,
-        "DUPLICATE_TIMESTAMPS",
-        f"duplicate timestamp fraction={dup_frac:.6f}",
-        f"duplicate timestamp fraction={dup_frac:.6f} exceeds {thresholds.max_duplicate_timestamp_fraction:.6f}",
-        severity="WARN",
+        dup_obs_frac <= thresholds.max_duplicate_observation_fraction,
+        "DUPLICATE_OBSERVATION_KEYS",
+        f"duplicate observation-key fraction={dup_obs_frac:.6f} using {key_cols}",
+        f"duplicate observation-key fraction={dup_obs_frac:.6f} exceeds {thresholds.max_duplicate_observation_fraction:.6f} using {key_cols}",
+    ))
+    panel_timestamp_repeat_fraction = float(ts.duplicated().mean()) if len(ts) else 0.0
+    findings.append(_finding(
+        True,
+        "PANEL_TIMESTAMP_MULTIPLICITY",
+        f"timestamp repeat fraction={panel_timestamp_repeat_fraction:.6f}; repeats across symbols are expected in panel data",
+        "",
     ))
 
     if split_col in df:
-        expected = {"development", "validation", "test"}
+        expected = ("development", "validation", "test")
         actual = set(df[split_col].dropna().astype(str).unique())
-        findings.append(_finding(expected.issubset(actual), "SPLIT_LABELS", f"split labels present: {sorted(actual)}", f"expected {sorted(expected)}, observed {sorted(actual)}"))
+        findings.append(_finding(set(expected).issubset(actual), "SPLIT_LABELS", f"split labels present: {sorted(actual)}", f"expected {sorted(expected)}, observed {sorted(actual)}"))
         try:
             split_map = {k: df[df[split_col] == k].sort_values(timestamp_col).copy() for k in expected}
             assert_temporal_separation(split_map, timestamp_col=timestamp_col)
-            findings.append(_finding(True, "TEMPORAL_SEPARATION", "development < validation < test with no overlap", ""))
+            findings.append(_finding(True, "TEMPORAL_SEPARATION", "development < validation < test with no shared timestamp", ""))
         except Exception as exc:
             findings.append(_finding(False, "TEMPORAL_SEPARATION", "", str(exc)))
     else:
@@ -153,7 +165,8 @@ def audit_dataset(
         "numeric_feature_count": int(len(numeric)),
         "categorical_feature_count": int(len(categorical)),
         "positive_fraction": positive,
-        "duplicate_timestamp_fraction": dup_frac,
+        "duplicate_observation_fraction": dup_obs_frac,
+        "panel_timestamp_repeat_fraction": panel_timestamp_repeat_fraction,
         "worst_missing_fraction": worst_missing,
         "constant_features": constant,
         "dataframe_sha256": dataframe_sha256(df),
@@ -171,7 +184,7 @@ def audit_prefix_invariance(
     feature_prefix: str = "f_",
     atol: float = 1e-10,
 ) -> dict:
-    """Mutation-free causal audit: adding future rows must not alter past features."""
+    """Adding future rows must not alter historical features."""
     if not 0.2 <= cut_fraction <= 0.9:
         raise ValueError("cut_fraction must be between 0.2 and 0.9")
     n = len(frame)
@@ -189,12 +202,7 @@ def audit_prefix_invariance(
         b = pd.to_numeric(prefix[c], errors="coerce").to_numpy(dtype=float)
         if len(a) != len(b) or not np.allclose(a, b, equal_nan=True, atol=atol, rtol=1e-9):
             bad.append(c)
-    return {
-        "passed": not bad,
-        "cut": cut,
-        "features_checked": len(cols),
-        "violating_features": bad,
-    }
+    return {"passed": not bad, "cut": cut, "features_checked": len(cols), "violating_features": bad}
 
 
 def audit_future_mutation_invariance(
@@ -204,7 +212,7 @@ def audit_future_mutation_invariance(
     cut_fraction: float = 0.70,
     numeric_market_columns: tuple[str, ...] = ("open", "high", "low", "close", "volume"),
 ) -> dict:
-    """Adversarial causal audit: mutate future candles; historical f_* values must stay fixed."""
+    """Mutate future candles adversarially; historical f_* values must stay fixed."""
     n = len(frame)
     cut = int(n * cut_fraction)
     if cut < 50 or cut >= n - 2:
@@ -236,20 +244,18 @@ def audit_prediction_selection(
 ) -> tuple[pd.DataFrame, dict]:
     """Verify that test rows did not choose model family or threshold."""
     findings: list[AuditFinding] = []
-    if split_col not in predictions:
-        findings.append(_finding(False, "PREDICTION_SPLIT", "", f"missing {split_col}"))
-    else:
-        findings.append(_finding(True, "PREDICTION_SPLIT", "prediction split column present", ""))
-    if threshold_source_col in predictions:
+    has_split = split_col in predictions
+    findings.append(_finding(has_split, "PREDICTION_SPLIT", "prediction split column present", f"missing {split_col}"))
+    if has_split and threshold_source_col in predictions:
         bad = predictions[predictions[split_col] == "test"][threshold_source_col].astype(str).str.lower().eq("test").any()
         findings.append(_finding(not bad, "TEST_THRESHOLD_FREEZE", "test never selected threshold", "test selected its own threshold"))
     else:
-        findings.append(_finding(False, "TEST_THRESHOLD_FREEZE", "", f"missing {threshold_source_col}", severity="WARN"))
-    if model_selection_source_col in predictions:
+        findings.append(_finding(False, "TEST_THRESHOLD_FREEZE", "", f"missing {threshold_source_col} or split", severity="WARN"))
+    if has_split and model_selection_source_col in predictions:
         bad = predictions[predictions[split_col] == "test"][model_selection_source_col].astype(str).str.lower().eq("test").any()
         findings.append(_finding(not bad, "TEST_MODEL_FREEZE", "test never selected model", "test selected model family"))
     else:
-        findings.append(_finding(False, "TEST_MODEL_FREEZE", "", f"missing {model_selection_source_col}", severity="WARN"))
+        findings.append(_finding(False, "TEST_MODEL_FREEZE", "", f"missing {model_selection_source_col} or split", severity="WARN"))
     fatal = [x for x in findings if not x.passed and x.severity == "ERROR"]
     return pd.DataFrame([asdict(x) for x in findings]), {"decision": "AUDIT_PASS" if not fatal else "AUDIT_FAIL", "fatal_codes": [x.code for x in fatal]}
 
