@@ -24,6 +24,9 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, RobustScaler
 
 
+# Outcome/post-trade information is allowed to exist in a labeled research table,
+# but it is never allowed into X. The f_* prefix is necessary but not sufficient:
+# names are checked against an explicit leakage deny-list as a second barrier.
 BANNED_FEATURE_EXACT = {
     "label", "target", "future_return", "future_log_return", "future_price",
     "entry", "exit", "stop", "take_profit", "r_multiple", "realized_return",
@@ -44,6 +47,9 @@ class SplitContract:
     development_fraction: float = 0.60
     validation_fraction: float = 0.20
     test_fraction: float = 0.20
+    # Embargo is counted in UNIQUE timestamp groups, not rows. This prevents a
+    # multi-asset panel from placing BTC at time t in development and ETH at the
+    # same t in validation merely because a row boundary cut the panel in half.
     embargo_rows: int = 1
 
     def validate(self) -> None:
@@ -79,6 +85,8 @@ class RiskContract:
 class ModelSearchContract:
     seeds: tuple[int, ...] = (314, 2718, 1618)
     threshold_quantiles: tuple[float, ...] = (0.50, 0.60, 0.70, 0.75, 0.80, 0.85, 0.90, 0.925, 0.95)
+    # Market identity can memorize historical symbol/strategy effects. It is an
+    # ablation-only tier by default, never part of the primary generalization arm.
     allow_identity_features: bool = False
     test_may_select_model: bool = False
 
@@ -98,8 +106,7 @@ class MLResearchContract:
 
 
 def dataframe_sha256(df: pd.DataFrame) -> str:
-    normalized = df.copy()
-    normalized = normalized.reindex(sorted(normalized.columns), axis=1)
+    normalized = df.copy().reindex(sorted(df.columns), axis=1)
     payload = pd.util.hash_pandas_object(normalized, index=True).values.tobytes()
     return sha256(payload).hexdigest()
 
@@ -112,9 +119,7 @@ def assert_unique_columns(df: pd.DataFrame) -> None:
 
 def _is_banned_name(name: str) -> bool:
     low = name.lower().strip()
-    if low in BANNED_FEATURE_EXACT:
-        return True
-    return any(token in low for token in BANNED_SUBSTRINGS)
+    return low in BANNED_FEATURE_EXACT or any(token in low for token in BANNED_SUBSTRINGS)
 
 
 def select_feature_columns(
@@ -124,7 +129,7 @@ def select_feature_columns(
     include_context: bool = True,
     include_identity: bool = False,
 ) -> tuple[list[str], list[str]]:
-    """Strict feature whitelist. Outcome columns cannot become inputs by accident."""
+    """Strict X whitelist. Outcome fields cannot enter a model by accidental join."""
     assert_unique_columns(df)
     numeric: list[str] = []
     for c in df.columns:
@@ -149,8 +154,15 @@ def chronological_purged_split(
     df: pd.DataFrame,
     *,
     timestamp_col: str = "signal_time",
+    label_end_time_col: str | None = None,
     contract: SplitContract | None = None,
 ) -> dict[str, pd.DataFrame]:
+    """Chronological panel split by unique timestamps with embargo and label purging.
+
+    If `label_end_time_col` is supplied, development/validation rows whose target
+    window reaches into the next segment are removed. This is the financial-ML
+    equivalent of preventing overlapping future labels from crossing a boundary.
+    """
     contract = contract or SplitContract()
     contract.validate()
     assert_unique_columns(df)
@@ -160,24 +172,43 @@ def chronological_purged_split(
     x[timestamp_col] = pd.to_datetime(x[timestamp_col], utc=True, errors="coerce")
     if x[timestamp_col].isna().any():
         raise ValueError("timestamp parse failure")
+    if label_end_time_col is not None:
+        if label_end_time_col not in x:
+            raise ValueError(f"missing label end time column: {label_end_time_col}")
+        x[label_end_time_col] = pd.to_datetime(x[label_end_time_col], utc=True, errors="coerce")
+        if x[label_end_time_col].isna().any():
+            raise ValueError("label end time parse failure")
+        if (x[label_end_time_col] < x[timestamp_col]).any():
+            raise ValueError("label_end_time precedes signal_time")
     x = x.sort_values(timestamp_col, kind="mergesort").reset_index(drop=True)
-    n = len(x)
-    if n < 30:
-        raise ValueError("dataset too small for development/validation/test research split")
-    a = int(n * contract.development_fraction)
-    b = int(n * (contract.development_fraction + contract.validation_fraction))
+    unique_ts = pd.Index(x[timestamp_col].drop_duplicates().sort_values())
+    if len(unique_ts) < 30:
+        raise ValueError("dataset has too few unique timestamps for research split")
+    a = int(len(unique_ts) * contract.development_fraction)
+    b = int(len(unique_ts) * (contract.development_fraction + contract.validation_fraction))
     e = contract.embargo_rows
-    dev_end = max(0, a - e)
-    val_start = min(n, a + e)
-    val_end = max(val_start, b - e)
-    test_start = min(n, b + e)
+    if a - e <= 0 or a + e >= b - e or b + e >= len(unique_ts):
+        raise ValueError("embargo too large for split")
+    dev_ts = set(unique_ts[: a - e])
+    val_ts = set(unique_ts[a + e : b - e])
+    test_ts = set(unique_ts[b + e :])
     out = {
-        "development": x.iloc[:dev_end].copy(),
-        "validation": x.iloc[val_start:val_end].copy(),
-        "test": x.iloc[test_start:].copy(),
+        "development": x[x[timestamp_col].isin(dev_ts)].copy(),
+        "validation": x[x[timestamp_col].isin(val_ts)].copy(),
+        "test": x[x[timestamp_col].isin(test_ts)].copy(),
     }
     if min(len(v) for v in out.values()) == 0:
         raise ValueError("embargo/split produced an empty segment")
+    if label_end_time_col is not None:
+        val_start = out["validation"][timestamp_col].min()
+        test_start = out["test"][timestamp_col].min()
+        out["development"] = out["development"][out["development"][label_end_time_col] < val_start].copy()
+        out["validation"] = out["validation"][out["validation"][label_end_time_col] < test_start].copy()
+        if min(len(v) for v in out.values()) == 0:
+            raise ValueError("label-window purge produced an empty segment")
+    for part in out.values():
+        part.sort_values(timestamp_col, kind="mergesort", inplace=True)
+        part.reset_index(drop=True, inplace=True)
     assert_temporal_separation(out, timestamp_col=timestamp_col)
     return out
 
@@ -187,38 +218,40 @@ def assert_temporal_separation(splits: Mapping[str, pd.DataFrame], *, timestamp_
     if any(k not in splits for k in required):
         raise ValueError("development/validation/test splits are required")
     bounds = {}
+    timestamp_sets = {}
     for k in required:
         t = pd.to_datetime(splits[k][timestamp_col], utc=True)
         if not t.is_monotonic_increasing:
             raise ValueError(f"{k} timestamps are not monotonic")
         bounds[k] = (t.min(), t.max())
+        timestamp_sets[k] = set(t.tolist())
+    if timestamp_sets["development"] & timestamp_sets["validation"]:
+        raise ValueError("development and validation share timestamps")
+    if timestamp_sets["validation"] & timestamp_sets["test"]:
+        raise ValueError("validation and test share timestamps")
+    if timestamp_sets["development"] & timestamp_sets["test"]:
+        raise ValueError("development and test share timestamps")
     if not (bounds["development"][1] < bounds["validation"][0] < bounds["validation"][1] < bounds["test"][0]):
         raise ValueError(f"temporal split overlap detected: {bounds}")
 
 
 def cost_aware_next_open_labels(frame: pd.DataFrame, cost: CostContract | None = None) -> pd.DataFrame:
-    """Label close[t] decisions by open[t+1] -> open[t+2] net hurdle.
-
-    The future return is emitted only as a target column. It must never be reused
-    as an input feature. The final two rows are dropped because their targets are
-    not fully observable.
-    """
+    """Label close[t] by open[t+1] -> open[t+2], net of the frozen round-trip hurdle."""
     cost = cost or CostContract()
     required = {"timestamp", "open"}
     if required - set(frame.columns):
         raise ValueError(f"missing columns: {sorted(required - set(frame.columns))}")
     x = frame.copy().sort_values("timestamp").reset_index(drop=True)
     x["signal_time"] = pd.to_datetime(x["timestamp"], utc=True)
-    entry = x["open"].shift(-1).astype(float)
-    exit_ = x["open"].shift(-2).astype(float)
+    entry = pd.to_numeric(x["open"].shift(-1), errors="coerce")
+    exit_ = pd.to_numeric(x["open"].shift(-2), errors="coerce")
     gross = exit_ / entry - 1.0
     net = gross - cost.roundtrip_fraction
+    x["label_end_time"] = pd.to_datetime(x["timestamp"].shift(-2), utc=True)
     x["label_future_gross_return"] = gross
     x["label_future_net_return"] = net
     x["label_positive_net"] = (net > 0).astype("int8")
-    x["label_direction_3class"] = np.select(
-        [net > 0, net < 0], [1, -1], default=0,
-    ).astype("int8")
+    x["label_direction_3class"] = np.select([net > 0, net < 0], [1, -1], default=0).astype("int8")
     return x.iloc[:-2].copy()
 
 
@@ -238,7 +271,7 @@ def make_preprocessor(numeric: list[str], categorical: list[str]) -> ColumnTrans
 
 
 def supervised_model_registry(seed: int = 314) -> dict[str, object]:
-    """Compact first-pass registry; deep models are evaluated in a separate sequence track."""
+    """Major tabular baselines; temporal/deep models stay in a separate sequence protocol."""
     return {
         "logistic": LogisticRegression(max_iter=1500, class_weight="balanced", random_state=seed),
         "ridge_classifier": RidgeClassifier(class_weight="balanced"),
@@ -251,7 +284,7 @@ def supervised_model_registry(seed: int = 314) -> dict[str, object]:
 
 
 def unsupervised_model_registry(seed: int = 314) -> dict[str, object]:
-    """Regime/anomaly discovery only; unsupervised outputs are not promoted as alpha by themselves."""
+    """Regime/anomaly discovery only; unsupervised clusters are never treated as alpha by themselves."""
     return {
         "isolation_forest": IsolationForest(n_estimators=250, contamination="auto", random_state=seed, n_jobs=2),
         "gmm_3": GaussianMixture(n_components=3, covariance_type="full", random_state=seed, reg_covar=1e-6),
@@ -287,15 +320,17 @@ def classification_metrics(y_true: Iterable[int], score: Iterable[float]) -> dic
     return out
 
 
-def economic_metrics(net_returns: Iterable[float], selected: Iterable[bool], *, risk: RiskContract | None = None) -> dict[str, float | int]:
-    risk = risk or RiskContract()
-    r = np.asarray(list(net_returns), dtype=float)
+def economic_metrics(net_returns: Iterable[float], selected: Iterable[bool]) -> dict[str, float | int]:
+    """Unit-exposure economics for a prediction filter; not a risk-sized strategy backtest."""
+    all_r = np.asarray(list(net_returns), dtype=float)
     s = np.asarray(list(selected), dtype=bool)
-    r = r[s]
+    if len(all_r) != len(s):
+        raise ValueError("net_returns and selected lengths differ")
+    r = all_r[s]
     if len(r) == 0:
-        return {"selected": 0, "coverage": 0.0, "mean_net_return": np.nan, "profit_factor": np.nan, "total_return": np.nan, "max_drawdown": np.nan}
-    account = np.clip(r, -0.99, None) * risk.base_risk_per_trade
-    equity = np.cumprod(1.0 + account)
+        return {"selected": 0, "coverage": 0.0, "mean_net_return": np.nan, "profit_factor": np.nan, "unit_exposure_total_return": np.nan, "unit_exposure_max_drawdown": np.nan}
+    safe = np.clip(r, -0.99, None)
+    equity = np.cumprod(1.0 + safe)
     peak = np.maximum.accumulate(equity)
     dd = equity / peak - 1.0
     wins = float(r[r > 0].sum())
@@ -306,8 +341,8 @@ def economic_metrics(net_returns: Iterable[float], selected: Iterable[bool], *, 
         "coverage": float(len(r) / max(len(s), 1)),
         "mean_net_return": float(np.mean(r)),
         "profit_factor": float(pf),
-        "total_return": float(equity[-1] - 1.0),
-        "max_drawdown": float(dd.min()),
+        "unit_exposure_total_return": float(equity[-1] - 1.0),
+        "unit_exposure_max_drawdown": float(dd.min()),
     }
 
 
@@ -318,6 +353,7 @@ def choose_validation_threshold(
     search: ModelSearchContract | None = None,
     risk: RiskContract | None = None,
 ) -> tuple[float, dict]:
+    """Threshold search is validation-only. Test is not accepted by this API."""
     search = search or ModelSearchContract()
     risk = risk or RiskContract()
     p = np.asarray(list(score), dtype=float)
@@ -325,37 +361,34 @@ def choose_validation_threshold(
     best_t, best, best_objective = 1.0, None, -np.inf
     for q in search.threshold_quantiles:
         t = float(np.quantile(p, q))
-        m = economic_metrics(r, p >= t, risk=risk)
+        m = economic_metrics(r, p >= t)
         if int(m["selected"]) < risk.min_validation_selected:
             continue
         pf = float(m["profit_factor"])
         mean = float(m["mean_net_return"])
-        dd = abs(float(m["max_drawdown"]))
+        dd = abs(float(m["unit_exposure_max_drawdown"]))
         if not (np.isfinite(mean) and np.isfinite(dd) and np.isfinite(pf)):
             continue
-        objective = mean * np.sqrt(int(m["selected"])) + 0.10 * (min(pf, 5.0) - 1.0) - 0.75 * dd
+        objective = mean * np.sqrt(int(m["selected"])) + 0.10 * (min(pf, 5.0) - 1.0) - 0.25 * dd
         if objective > best_objective:
             best_t, best, best_objective = t, m, objective
     if best is None:
-        best = economic_metrics(r, np.zeros(len(r), dtype=bool), risk=risk)
+        best = economic_metrics(r, np.zeros(len(r), dtype=bool))
     return best_t, {**best, "validation_objective": float(best_objective)}
 
 
-def promotion_decision(test_metrics: Mapping[str, float | int], *, risk: RiskContract | None = None) -> dict:
+def research_candidate_decision(test_metrics: Mapping[str, float | int], *, risk: RiskContract | None = None) -> dict:
+    """A prediction experiment may become a research candidate, never LIVE or automatic PAPER replacement."""
     risk = risk or RiskContract()
     n = int(test_metrics.get("selected", 0))
     mean = float(test_metrics.get("mean_net_return", np.nan))
     pf = float(test_metrics.get("profit_factor", np.nan))
-    dd = abs(float(test_metrics.get("max_drawdown", np.nan)))
-    passed = bool(
-        n >= risk.min_test_selected
-        and np.isfinite(mean) and mean > 0
-        and np.isfinite(pf) and pf >= risk.min_profit_factor
-        and np.isfinite(dd) and dd <= risk.max_drawdown
-    )
+    passed = bool(n >= risk.min_test_selected and np.isfinite(mean) and mean > 0 and np.isfinite(pf) and pf >= risk.min_profit_factor)
     return {
-        "decision": "FORWARD_PAPER_ML_CANDIDATE" if passed else "NO_ML_MODEL_PROMOTED",
+        "decision": "ML_RESEARCH_CANDIDATE" if passed else "NO_ML_MODEL_PROMOTED",
         "test_pass": passed,
+        "requires_strategy_level_risk_backtest": True,
+        "forward_paper_authorized": False,
         "paper_replacement_authorized": False,
         "live_execution_authorized": False,
     }
