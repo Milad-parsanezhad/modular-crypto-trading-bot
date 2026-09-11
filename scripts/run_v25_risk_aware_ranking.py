@@ -34,6 +34,13 @@ def _sha_json(obj: dict) -> str:
 
 
 def _spent_external_diagnostic(root: Path, snapshot: dict, contract: V25RankingContract) -> pd.DataFrame:
+    """Compare rankers on already-spent v0.24d external rows for diagnosis only.
+
+    v0.24d stores the exact immutable event-model outputs in the canonical columns
+    ``frozen_score``, ``frozen_selected`` and ``frozen_threshold``. Do not rebuild
+    or rename them from older v0.24c intermediate schemas. This function is never
+    used for v0.25 scientific promotion or model selection.
+    """
     rows = []
     for venue in ("okx", "kucoin"):
         path = root / venue / "external_scored_events_full.csv"
@@ -45,9 +52,16 @@ def _spent_external_diagnostic(root: Path, snapshot: dict, contract: V25RankingC
         if frame.empty:
             rows.append({"venue": venue, "status": "SPENT_DATA_EMPTY"})
             continue
-        frame["frozen_score"] = pd.to_numeric(frame["external_score"], errors="coerce")
+        required = {"frozen_score", "frozen_threshold", "frozen_selected"}
+        missing = sorted(required - set(frame.columns))
+        if missing:
+            raise RuntimeError(f"V25_SPENT_SCHEMA_MISMATCH {venue}: missing={missing}")
+        frame["frozen_score"] = pd.to_numeric(frame["frozen_score"], errors="coerce")
         frame["frozen_threshold"] = pd.to_numeric(frame["frozen_threshold"], errors="coerce")
-        frame["frozen_selected"] = frame["external_selected"].astype(bool)
+        # CSV booleans can arrive as bool or strings depending on pandas/parser version.
+        if frame["frozen_selected"].dtype == object:
+            frame["frozen_selected"] = frame["frozen_selected"].astype(str).str.lower().map({"true": True, "false": False})
+        frame["frozen_selected"] = frame["frozen_selected"].astype(bool)
         frame["frozen_score_margin"] = frame["frozen_score"] - frame["frozen_threshold"]
         learned_priority = score_ranker(frame, snapshot)
         base_priority = frame["frozen_score"].to_numpy(dtype=float)
