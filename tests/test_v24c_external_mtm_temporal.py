@@ -61,8 +61,12 @@ def test_bybit_spot_fetch_normalizes_newest_first_and_audits_gaps():
 
 
 def test_temporal_sequence_is_unchanged_by_future_mutation():
-    frame = _bars(180)
-    signal_time = frame.loc[120, "timestamp"]
+    # The temporal feature set inherits long-horizon trend features (EMA-200 and
+    # related rolling state), so the causal regression point must sit beyond that
+    # warm-up plus the 64-bar input window. A short fixture would test warm-up
+    # availability rather than look-ahead invariance.
+    frame = _bars(420)
+    signal_time = frame.loc[330, "timestamp"]
     events = pd.DataFrame({"signal_time": [signal_time], "label_meta_execute": [1], "symbol": ["X/USDT"]})
     x1, m1, _ = build_event_sequences(frame, events, lookback=64)
     mutated = frame.copy()
@@ -93,8 +97,6 @@ def test_mtm_engine_marks_open_position_and_remains_fail_closed_on_risk():
 
 
 def test_cvar_is_loss_positive_and_budget_can_block_after_history():
-    # Unit-level behavioral guard for the contract itself: budget is expressed as
-    # positive loss fraction and must be stricter than the 5% hard drawdown kill.
     c = MTMRiskContract()
     assert 0 < c.max_cvar_loss_fraction < c.hard_mtm_drawdown_kill
     assert c.cvar_alpha == 0.95
