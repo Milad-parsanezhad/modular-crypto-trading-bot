@@ -67,7 +67,8 @@ jobs:
         run: cat artifacts/v27-cross-venue-robustness/decision_v27.json
 
       - name: Print top development rows
-        run: python - <<'PY'
+        run: |
+          python - <<'PY'
           import pandas as pd
           p = 'artifacts/v27-cross-venue-robustness/development_summary_v27.csv'
           x = pd.read_csv(p)
@@ -81,6 +82,7 @@ jobs:
           PY
 
       - name: Upload v0.27 evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: v27-cross-venue-robustness
