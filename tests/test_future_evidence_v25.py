@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import sys
+import types
+
+import numpy as np
 import pandas as pd
 
+from research_bot.ccxt_external_v24c import fetch_ccxt_spot_ohlcv
 from research_bot.future_evidence_v25 import (
     V25FutureEvidenceContract,
     allocator_gate,
@@ -11,6 +16,7 @@ from research_bot.future_evidence_v25 import (
     last_safe_completed_4h_open,
     maturity_state,
 )
+from scripts.run_v25_future_snapshot import _merge_append_only, _stress_r_multiple
 
 
 def test_last_safe_completed_bar_excludes_in_progress_candle():
@@ -93,3 +99,85 @@ def test_terminal_future_state_prevents_repeated_first_look():
     assert future_state_is_terminal({"state": "FUTURE_ALLOCATOR_GATE_PASS_PRE_SEARCH_AUDIT"}) is True
     assert future_state_is_terminal({"state": "FUTURE_ALLOCATOR_GATE_FAIL"}) is True
     assert future_state_is_terminal({"state": "INSUFFICIENT_FUTURE_SAMPLE"}) is False
+
+
+def test_append_only_chain_preserves_first_observed_bars_and_flags_restatements():
+    previous = pd.DataFrame({
+        "timestamp": pd.to_datetime(["2026-09-11T00:00:00Z", "2026-09-11T04:00:00Z"]),
+        "open": [100.0, 101.0], "high": [102.0, 103.0], "low": [99.0, 100.0],
+        "close": [101.0, 102.0], "volume": [10.0, 11.0], "source": ["old", "old"],
+    })
+    fresh = pd.DataFrame({
+        "timestamp": pd.to_datetime(["2026-09-11T00:00:00Z", "2026-09-11T04:00:00Z", "2026-09-11T08:00:00Z"]),
+        "open": [100.5, 101.0, 102.0], "high": [102.0, 103.0, 104.0], "low": [99.0, 100.0, 101.0],
+        "close": [101.5, 102.2, 103.0], "volume": [10.0, 11.0, 12.0], "source": ["new", "new", "new"],
+    })
+    merged, revisions = _merge_append_only(previous, fresh)
+    assert revisions == 2
+    assert len(merged) == 3
+    assert merged.loc[0, "open"] == 100.0
+    assert merged.loc[1, "close"] == 102.0
+    assert merged.loc[2, "timestamp"] == pd.Timestamp("2026-09-11T08:00:00Z")
+
+
+def test_cost_stress_is_monotone_and_recomputes_r_from_gross_return():
+    rows = pd.DataFrame({
+        "entry": [100.0, 100.0],
+        "stop": [98.0, 102.0],
+        "gross_return": [0.02, 0.02],
+    })
+    r24 = _stress_r_multiple(rows, 24.0).to_numpy()
+    r36 = _stress_r_multiple(rows, 36.0).to_numpy()
+    r60 = _stress_r_multiple(rows, 60.0).to_numpy()
+    assert np.all(r24 > r36)
+    assert np.all(r36 > r60)
+    np.testing.assert_allclose(r24, [(0.02 - 0.0024) / 0.02] * 2)
+
+
+def test_ccxt_pagination_advances_by_full_candle_boundary(monkeypatch):
+    calls: list[int] = []
+
+    class FakeExchange:
+        rateLimit = 0
+        timeout = 20_000
+
+        def __init__(self, _config):
+            pass
+
+        def load_markets(self):
+            return {"ATOM/USDT": {"spot": True}}
+
+        def parse_timeframe(self, timeframe):
+            assert timeframe == "4h"
+            return 4 * 60 * 60
+
+        def fetch_ohlcv(self, symbol, timeframe, since, limit):
+            assert symbol == "ATOM/USDT"
+            assert timeframe == "4h"
+            calls.append(int(since))
+            if len(calls) == 1:
+                return [
+                    [0, 100, 101, 99, 100, 10],
+                    [14_400_000, 100, 102, 99, 101, 11],
+                ]
+            return [[28_800_000, 101, 103, 100, 102, 12]]
+
+        def close(self):
+            return None
+
+    fake_ccxt = types.SimpleNamespace(fake=FakeExchange)
+    monkeypatch.setitem(sys.modules, "ccxt", fake_ccxt)
+    monkeypatch.setattr("research_bot.ccxt_external_v24c.time.sleep", lambda *_args, **_kwargs: None)
+
+    out = fetch_ccxt_spot_ohlcv(
+        "fake",
+        "ATOM/USDT",
+        timeframe="4h",
+        start_ms=0,
+        end_ms=28_800_000,
+        max_bars=10,
+        page_limit=2,
+        max_pages=3,
+    )
+    assert calls == [0, 28_800_000]
+    assert len(out) == 3
