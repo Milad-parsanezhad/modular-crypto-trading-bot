@@ -163,8 +163,6 @@ def build_strategy_event_panel(
     x["f_strategy_rr"] = float(spec.rr)
     x["f_strategy_stop_atr"] = float(spec.stop_atr)
     x["f_strategy_max_hold_bars"] = float(spec.max_hold_bars)
-    # Meta-label = whether the frozen strategy event made money net of the frozen
-    # market-order friction. Outcomes remain labels only and never enter X.
     x["label_meta_execute"] = (x["r_multiple"].astype(float) > 0).astype("int8")
     x["label_triple_barrier_class"] = np.select(
         [x["exit_reason"].eq("target"), x["exit_reason"].eq("stop")],
@@ -172,8 +170,6 @@ def build_strategy_event_panel(
         default=0,
     ).astype("int8")
     x["label_vertical_barrier"] = x["exit_reason"].eq("timeout").astype("int8")
-    # Segment from v0.19 is discarded later; v0.24 performs one pooled purged split
-    # across all symbols/strategies so a timestamp cannot leak across segments.
     return x
 
 
@@ -181,6 +177,25 @@ def _stress_r_multiple(df: pd.DataFrame, roundtrip_bps: float) -> pd.Series:
     stop_fraction = (pd.to_numeric(df["entry"], errors="coerce") - pd.to_numeric(df["stop"], errors="coerce")).abs() / pd.to_numeric(df["entry"], errors="coerce").replace(0, np.nan)
     gross = pd.to_numeric(df["gross_return"], errors="coerce")
     return (gross - roundtrip_bps / 10_000.0) / stop_fraction.replace(0, np.nan)
+
+
+def _pf_effective(value: float, cap: float = 5.0) -> float:
+    """Map a legitimate zero-loss PF=+inf to a finite optimization cap.
+
+    This avoids rejecting an otherwise valid validation subset merely because it
+    contains no losing trades. NaN and negative infinity remain invalid.
+    """
+    v = float(value)
+    if np.isposinf(v):
+        return float(cap)
+    if np.isfinite(v):
+        return float(min(v, cap))
+    return np.nan
+
+
+def _pf_passes(value: float, minimum: float) -> bool:
+    v = float(value)
+    return bool((np.isfinite(v) and v >= minimum) or np.isposinf(v))
 
 
 def economic_metrics(
@@ -243,11 +258,16 @@ def choose_meta_threshold(validation: pd.DataFrame, score: np.ndarray, contract:
         filt = economic_metrics(validation, selected, risk_per_trade=c.risk_per_trade)
         if int(filt["selected"]) < c.min_validation_selected:
             continue
-        if not (np.isfinite(float(filt["mean_r"])) and np.isfinite(float(filt["profit_factor"]))):
+        if not np.isfinite(float(filt["mean_r"])):
             continue
-        base_pf = float(base["profit_factor"]) if np.isfinite(float(base["profit_factor"])) else 0.0
+        filt_pf_eff = _pf_effective(float(filt["profit_factor"]))
+        base_pf_eff = _pf_effective(float(base["profit_factor"]))
+        if not np.isfinite(filt_pf_eff):
+            continue
+        if not np.isfinite(base_pf_eff):
+            base_pf_eff = 0.0
         uplift_r = float(filt["mean_r"]) - float(base["mean_r"])
-        uplift_pf = min(float(filt["profit_factor"]), 5.0) - min(base_pf, 5.0)
+        uplift_pf = filt_pf_eff - base_pf_eff
         dd_penalty = max(0.0, abs(float(filt["max_drawdown"])) - abs(float(base["max_drawdown"])))
         objective = uplift_r * math.sqrt(int(filt["selected"])) + 0.15 * uplift_pf - 0.75 * dd_penalty
         if objective > float(best["validation_objective"]):
@@ -276,12 +296,6 @@ def deflated_sharpe_probability(
     *,
     trial_sharpes: Iterable[float],
 ) -> dict[str, float | int]:
-    """Bailey/Lopez-de-Prado style DSR diagnostic on per-trade returns.
-
-    The benchmark Sharpe is the expected maximum under the observed dispersion of
-    tried validation configurations. This is a multiple-testing diagnostic, not a
-    substitute for untouched external replication.
-    """
     r = np.asarray(list(returns), dtype=float)
     r = r[np.isfinite(r)]
     trials = np.asarray(list(trial_sharpes), dtype=float)
@@ -314,12 +328,6 @@ def deflated_sharpe_probability(
 
 
 def cscv_pbo_diagnostic(return_matrix: pd.DataFrame, *, groups: int = 6) -> dict[str, float | int | str]:
-    """CSCV-style probability-of-backtest-overfitting diagnostic.
-
-    Columns are frozen model/seed/threshold configurations and rows are ordered
-    validation events. No test data enters this calculation. Full CPCV retraining
-    remains mandatory if a v0.24 candidate survives the untouched test gate.
-    """
     if return_matrix.empty or return_matrix.shape[1] < 2 or len(return_matrix) < groups * 20:
         return {"decision": "INSUFFICIENT_FOR_PBO", "paths": 0, "pbo": np.nan, "median_oos_rank_percentile": np.nan}
     x = return_matrix.replace([np.inf, -np.inf], np.nan).fillna(0.0).to_numpy(dtype=float)
@@ -412,7 +420,7 @@ def promotion_decision(
     gates = {
         "min_test_selected": int(filt["selected"]) >= c.min_test_selected,
         "positive_filtered_expectancy": np.isfinite(float(filt["mean_r"])) and float(filt["mean_r"]) > 0,
-        "profit_factor": np.isfinite(float(filt["profit_factor"])) and float(filt["profit_factor"]) >= c.min_test_profit_factor,
+        "profit_factor": _pf_passes(float(filt["profit_factor"]), c.min_test_profit_factor),
         "incremental_total_return": float(filt["total_return"]) > float(base["total_return"]),
         "max_drawdown": abs(float(filt["max_drawdown"])) <= c.max_test_drawdown,
         "paired_bootstrap_uplift": np.isfinite(bootstrap_ci[0]) and float(bootstrap_ci[0]) > 0,
@@ -420,7 +428,7 @@ def promotion_decision(
         "strategy_breadth": float(strategy_breadth["uplift_fraction"]) >= c.min_strategy_uplift_fraction,
         "deflated_sharpe": np.isfinite(dsr_p) and dsr_p >= c.min_dsr_probability,
         "validation_pbo": np.isfinite(pbo) and pbo <= c.max_validation_pbo,
-        "stress_36bps": np.isfinite(float(stress36["filtered_profit_factor"])) and float(stress36["filtered_profit_factor"]) >= 1.0 and float(stress36["filtered_mean_r"]) > 0,
+        "stress_36bps": _pf_passes(float(stress36["filtered_profit_factor"]), 1.0) and float(stress36["filtered_mean_r"]) > 0,
     }
     passed = bool(all(gates.values()))
     return {
@@ -506,7 +514,6 @@ def fit_meta_models(
     threshold = float(seed_row["threshold"])
     champion = fitted[(champion_name, champion_seed)]
 
-    # Untouched test is scored only after model family, seed and threshold freeze.
     test_score = probability_score(champion, test[xcols])
     selected = np.asarray(test_score) >= threshold
     test_predictions = test[["signal_time", "entry_time", "exit_time", "strategy", "symbol", "side", "r_multiple"]].copy()
