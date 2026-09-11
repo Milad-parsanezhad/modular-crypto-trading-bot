@@ -27,6 +27,8 @@ env:
   V24B_ARTIFACT: "v24b-family-portfolio-34578494059"
   V25_RANK_RUN_ID: "34590214474"
   V25_RANK_ARTIFACT: "v25-risk-aware-ranking-34590214474"
+  FUTURE_BOUNDARY_UTC: "2026-09-11T16:00:00Z"
+  MAX_SCHEDULER_GAP_HOURS: "5.5"
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PIP_NO_CACHE_DIR: "1"
 
@@ -47,6 +49,31 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "${FROZEN_COLLECTOR_SHA}"
           printf '%s\n' "${GITHUB_SHA}" > /tmp/scheduler_main_sha.txt
+
+      - name: Enforce trigger governance before the prospective boundary
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timezone
+          from pathlib import Path
+          import json, os
+
+          event = os.environ['GITHUB_EVENT_NAME']
+          now = datetime.now(timezone.utc)
+          boundary = datetime.fromisoformat(os.environ['FUTURE_BOUNDARY_UTC'].replace('Z', '+00:00'))
+          allowed = event == 'schedule' or now < boundary
+          record = {
+              'version': 'v0.25-trigger-governance-v1',
+              'event_name': event,
+              'checked_at_utc': now.isoformat(),
+              'future_boundary_utc': boundary.isoformat(),
+              'allowed': allowed,
+              'rule': 'after the frozen future boundary, only the schedule event may read prospective evidence',
+          }
+          Path('/tmp/trigger_governance.json').write_text(json.dumps(record, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          print(json.dumps(record, indent=2, sort_keys=True))
+          if not allowed:
+              raise SystemExit('POST_BOUNDARY_NON_SCHEDULE_TRIGGER_FORBIDDEN')
+          PY
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
@@ -112,6 +139,47 @@ jobs:
             echo "PREVIOUS_DECISION_SHA256=${PREV_DECISION_SHA}"
           } >> "${GITHUB_ENV}"
 
+      - name: Audit scheduler continuity before collecting
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CURRENT_CREATED=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" --jq '.created_at')
+          PREVIOUS_CREATED=""
+          if [ -n "${PREVIOUS_RUN_ID}" ]; then
+            PREVIOUS_CREATED=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${PREVIOUS_RUN_ID}" --jq '.created_at')
+          fi
+          export CURRENT_CREATED PREVIOUS_CREATED
+          python - <<'PY'
+          from datetime import datetime
+          from pathlib import Path
+          import json, os
+
+          event = os.environ['GITHUB_EVENT_NAME']
+          current = datetime.fromisoformat(os.environ['CURRENT_CREATED'].replace('Z', '+00:00'))
+          previous_raw = os.environ.get('PREVIOUS_CREATED', '')
+          previous = datetime.fromisoformat(previous_raw.replace('Z', '+00:00')) if previous_raw else None
+          gap = (current - previous).total_seconds() / 3600.0 if previous else None
+          max_gap = float(os.environ['MAX_SCHEDULER_GAP_HOURS'])
+          boundary = datetime.fromisoformat(os.environ['FUTURE_BOUNDARY_UTC'].replace('Z', '+00:00'))
+          post_boundary = current >= boundary
+          status = 'FIRST_ACCEPTED_LINK' if previous is None else ('OK' if gap <= max_gap else 'GAP_DETECTED')
+          record = {
+              'version': 'v0.25-scheduler-continuity-v1',
+              'event_name': event,
+              'current_run_created_at': current.isoformat(),
+              'previous_run_created_at': previous.isoformat() if previous else None,
+              'gap_hours': gap,
+              'max_gap_hours': max_gap,
+              'post_boundary': post_boundary,
+              'status': status,
+              'rule': 'a post-boundary scheduled collection aborts before reading new evidence if the accepted-chain gap exceeds the frozen tolerance',
+          }
+          Path('/tmp/scheduler_continuity.json').write_text(json.dumps(record, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          print(json.dumps(record, indent=2, sort_keys=True))
+          if event == 'schedule' and post_boundary and gap is not None and gap > max_gap:
+              raise SystemExit('SCHEDULER_CONTINUITY_GAP_FAIL_CLOSED')
+          PY
+
       - name: Prospective causality and first-look regression tests
         run: |
           python -m pytest -q \
@@ -132,6 +200,10 @@ jobs:
           python - <<'PY'
           import json
           d=json.load(open('artifacts/v25-prospective-evidence/decision.json', encoding='utf-8'))
+          g=json.load(open('/tmp/trigger_governance.json', encoding='utf-8'))
+          c=json.load(open('/tmp/scheduler_continuity.json', encoding='utf-8'))
+          assert g.get('allowed') is True, g
+          assert c.get('status') in {'FIRST_ACCEPTED_LINK','OK'}, c
           assert d.get('forward_paper_authorized') is False, d
           assert d.get('paper_replacement_authorized') is False, d
           assert d.get('live_execution_authorized') is False, d
@@ -149,6 +221,8 @@ jobs:
         run: |
           mkdir -p artifacts/v25-prospective-evidence
           cp /tmp/scheduler_main_sha.txt artifacts/v25-prospective-evidence/scheduler_main_sha.txt
+          cp /tmp/trigger_governance.json artifacts/v25-prospective-evidence/trigger_governance.json
+          cp /tmp/scheduler_continuity.json artifacts/v25-prospective-evidence/scheduler_continuity.json
           printf '%s\n' "${FROZEN_COLLECTOR_SHA}" > artifacts/v25-prospective-evidence/frozen_collector_sha.txt
           printf '%s\n' "${GITHUB_RUN_ID}" > artifacts/v25-prospective-evidence/workflow_run_id.txt
           printf '%s\n' "${PREVIOUS_RUN_ID}" > artifacts/v25-prospective-evidence/previous_run_id.txt
@@ -167,7 +241,7 @@ jobs:
                       h.update(b)
               return h.hexdigest()
           link={
-              'version':'v0.25-prospective-evidence-chain-v1',
+              'version':'v0.25-prospective-evidence-chain-v2',
               'run_id':os.environ['GITHUB_RUN_ID'],
               'scheduler_main_sha':os.environ['GITHUB_SHA'],
               'frozen_collector_sha':os.environ['FROZEN_COLLECTOR_SHA'],
@@ -175,6 +249,8 @@ jobs:
               'previous_artifact_digest':os.environ.get('PREVIOUS_ARTIFACT_DIGEST') or None,
               'previous_decision_sha256':os.environ.get('PREVIOUS_DECISION_SHA256') or None,
               'previous_chain_link_sha256':digest(prev/'chain_link.json') if (prev/'chain_link.json').is_file() else None,
+              'trigger_governance_sha256':digest(out/'trigger_governance.json'),
+              'scheduler_continuity_sha256':digest(out/'scheduler_continuity.json'),
               'current_decision_sha256':digest(out/'decision.json'),
               'current_identity_sha256':digest(out/'future_snapshot_identity.json') if (out/'future_snapshot_identity.json').is_file() else None,
           }
