@@ -1,0 +1,21 @@
+{
+  "version": "v0.25",
+  "stage": "risk-aware-portfolio-ranking",
+  "research_state": "IMPLEMENTED_AWAITING_CI_FREEZE",
+  "future_start_utc": "2026-09-11T12:00:00Z",
+  "v24d_external_evidence": "SPENT_DIAGNOSTIC_ONLY",
+  "exact_v24b_event_filter_required": true,
+  "ranking_candidates": [
+    "frozen_score",
+    "frozen_margin",
+    "ridge_expected_r",
+    "hgb_expected_r",
+    "hgb_lower_quartile_r",
+    "pairwise_logistic_ranker"
+  ],
+  "selection_data": "development_fit_validation_selection_only",
+  "future_model_refit_allowed": false,
+  "forward_paper_authorized": false,
+  "paper_replacement_authorized": false,
+  "live_execution_authorized": false
+}
