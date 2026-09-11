@@ -1,0 +1,132 @@
+name: v24-strategy-aware-meta-labeling
+
+on:
+  push:
+    branches: [research/v24-strategy-aware-meta-labeling]
+    paths:
+      - "research_bot/strategy_meta_v24.py"
+      - "scripts/run_v24_strategy_meta_lab.py"
+      - "tests/test_strategy_meta_v24.py"
+      - "docs/V24_STRATEGY_AWARE_META_LABELING_PROTOCOL.md"
+      - ".github/workflows/v24-strategy-meta.yml"
+  pull_request:
+    paths:
+      - "research_bot/strategy_meta_v24.py"
+      - "scripts/run_v24_strategy_meta_lab.py"
+      - "tests/test_strategy_meta_v24.py"
+      - "docs/V24_STRATEGY_AWARE_META_LABELING_PROTOCOL.md"
+      - ".github/workflows/v24-strategy-meta.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "1"
+
+jobs:
+  v24-integrity-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout immutable experiment SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 1
+          clean: true
+          persist-credentials: false
+      - name: Verify source provenance
+        run: test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install research dependencies
+        run: python -m pip install --no-cache-dir -e '.[dev]'
+      - name: Dependency integrity
+        run: python -m pip check
+      - name: Run v0.24 causality/economics tests plus inherited leakage regressions
+        run: |
+          pytest -q \
+            tests/test_strategy_meta_v24.py \
+            tests/test_ml_framework_v23r.py \
+            tests/test_ml_audit_v23r.py \
+            tests/test_ml_audit_v23r_regressions.py \
+            tests/test_ml_meta_v21.py \
+            tests/test_meta_gate_v21.py
+
+  v24-real-data-ablation:
+    needs: v24-integrity-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout immutable experiment SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 1
+          clean: true
+          persist-credentials: false
+      - name: Verify source provenance
+        run: test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install research dependencies
+        run: python -m pip install --no-cache-dir -e '.[dev]'
+      - name: Dependency integrity
+        run: python -m pip check
+      - name: Run 12-asset 4h base-strategy vs ML-filter experiment
+        run: |
+          PYTHONPATH=. python scripts/run_v24_strategy_meta_lab.py \
+            --output-dir artifacts/v24-strategy-meta \
+            --symbols BTC/USDT,ETH/USDT,SOL/USDT,XRP/USDT,DOGE/USDT,ADA/USDT,LINK/USDT,LTC/USDT,BCH/USDT,TRX/USDT,AVAX/USDT,DOT/USDT \
+            --bars 3600
+      - name: Verify fail-closed scientific contract
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          root = pathlib.Path("artifacts/v24-strategy-meta")
+          d = json.loads((root / "decision.json").read_text(encoding="utf-8"))
+          assert d["dataset_audit"]["decision"] == "AUDIT_PASS", d["dataset_audit"]
+          assert d["meta_model"]["test_used_for_selection"] is False
+          assert d["forward_paper_authorized"] is False
+          assert d["paper_replacement_authorized"] is False
+          assert d["live_execution_authorized"] is False
+          assert d["meta_model"]["forward_paper_authorized"] is False
+          assert d["meta_model"]["live_execution_authorized"] is False
+          assert len(d["successful_symbols"]) >= 5
+          assert d["test_events"] >= 100
+          print({"decision": d["meta_model"]["decision"], "test_events": d["test_events"]})
+          PY
+      - name: Persist exact CI provenance
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, subprocess
+          root = pathlib.Path("artifacts/v24-strategy-meta")
+          actual = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          expected = os.environ["EXPECTED_SHA"]
+          assert actual == expected
+          (root / "ci_provenance.json").write_text(json.dumps({
+              "expected_sha": expected,
+              "actual_sha": actual,
+              "run_id": os.environ.get("GITHUB_RUN_ID"),
+              "workflow": os.environ.get("GITHUB_WORKFLOW"),
+              "status": "EXACT_EXPERIMENT_SHA_VERIFIED",
+          }, indent=2), encoding="utf-8")
+          PY
+          python -m pip freeze --all > artifacts/v24-strategy-meta/pip-freeze.txt
+      - name: Upload complete v0.24 evidence bundle
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: v24-strategy-meta-${{ github.run_id }}
+          path: artifacts/v24-strategy-meta/
+          if-no-files-found: error
+          retention-days: 30
