@@ -1,0 +1,67 @@
+name: v42-production-readiness
+on:
+  push:
+    branches: [research/v42-production-readiness]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  readiness-gate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Verify readiness and no-live invariants
+        run: python -m pytest -q tests/test_readiness_gate_v42.py tests/test_shadow_execution_v41.py tests/test_execution_stress_v40.py tests/test_kraken_holdout_v34.py
+      - uses: actions/download-artifact@v4
+        with:
+          name: v38-soft-portfolio
+          path: frozen-v38
+          github-token: ${{ github.token }}
+          repository: parsa314/modular-crypto-trading-bot
+          run-id: 34642791984
+      - uses: actions/download-artifact@v4
+        with:
+          name: v39-walk-forward-stability
+          path: frozen-v39
+          github-token: ${{ github.token }}
+          repository: parsa314/modular-crypto-trading-bot
+          run-id: 34642910532
+      - uses: actions/download-artifact@v4
+        with:
+          name: v40-execution-stress
+          path: frozen-v40
+          github-token: ${{ github.token }}
+          repository: parsa314/modular-crypto-trading-bot
+          run-id: 34643024579
+      - uses: actions/download-artifact@v4
+        with:
+          name: v41-shadow-execution
+          path: frozen-v41
+          github-token: ${{ github.token }}
+          repository: parsa314/modular-crypto-trading-bot
+          run-id: 34643236586
+      - name: Run v0.42 readiness gate
+        run: |
+          python scripts/run_v42_readiness.py \
+            --v38-artifact-dir frozen-v38 \
+            --v39-artifact-dir frozen-v39 \
+            --v40-artifact-dir frozen-v40 \
+            --v41-artifact-dir frozen-v41 \
+            --output-dir artifacts/v42-production-readiness
+      - name: Prove no real-money authorization
+        run: |
+          cat artifacts/v42-production-readiness/readiness_matrix_v42.json
+          cat artifacts/v42-production-readiness/decision_v42.json
+          ! grep -R '"real_money_trading_authorized": true' artifacts/v42-production-readiness
+          ! grep -R '"live_execution_authorized": true' artifacts/v42-production-readiness
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v42-production-readiness
+          path: artifacts/v42-production-readiness
+          retention-days: 90
