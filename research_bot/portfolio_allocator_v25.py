@@ -21,6 +21,11 @@ The policy is deliberately simple and preregistered rather than optimized:
 - exits stamped on the same bar are still open at that bar's entry decision,
   preserving the strict v0.23 causal contract.
 
+If realized equity falls while other positions remain open, an inherited
+position can temporarily sit above a percentage budget that was respected at
+its own entry. v0.25 never rewrites or resizes that historical position. It
+freezes new exposure in the affected bucket until exits release enough budget.
+
 These limits are portfolio-construction constraints, not performance gates.
 The frozen 5% drawdown qualification threshold remains unchanged.
 
@@ -45,7 +50,7 @@ class PortfolioRiskBudgetV25:
 
     aggregate_open_risk_cap: float = 0.020
     directional_open_risk_cap: float = 0.015
-    round_trip_cost_fraction: float = 0.0024  # 10 bps fee + 2 bps slippage, each way.
+    round_trip_cost_fraction: float = 0.0024
 
     def __post_init__(self) -> None:
         if not (0.0 < self.aggregate_open_risk_cap < 1.0):
@@ -75,11 +80,7 @@ def _timeframe_from_spec(spec: Any) -> str:
 
 
 def _cost_adjusted_stop_multiple(row: pd.Series, budget: PortfolioRiskBudgetV25) -> float:
-    """Absolute stop loss in R units including the frozen round-trip friction.
-
-    Uses only entry-time-known quantities (entry, stop and the preregistered
-    transaction-cost assumption). It never reads the future exit outcome.
-    """
+    """Absolute stop loss in R units including frozen round-trip friction."""
 
     entry = float(row["entry"])
     stop = float(row["stop"])
@@ -164,8 +165,6 @@ def _settle_before(
 
 
 def _open_risk_state(pending: list[PendingPositionV25]) -> tuple[float, dict[int, float]]:
-    """Return currently open cost-adjusted stop-loss budget in cash units."""
-
     total = float(sum(position.stop_loss_budget_cash for position in pending))
     directional = {
         -1: float(sum(position.stop_loss_budget_cash for position in pending if position.side < 0)),
@@ -192,8 +191,6 @@ def _pro_rata_batch_allocation(
     desired = proposals["proposed_stop_loss_budget_cash_v25"].astype(float).clip(lower=0.0)
     allocated = desired.copy()
 
-    # Directional buckets approximate the common crypto systematic factor
-    # without fitting a correlation matrix on the same validation sample.
     directional_cap_cash = float(budget.directional_open_risk_cap * equity)
     for side in (-1, 1):
         mask = proposals["side"].astype(int).eq(side)
@@ -407,12 +404,17 @@ def apply_portfolio_allocator_v25(
             x.at[row_i, "open_directional_risk_cash_after_v25"] = after_dir_cash[side]
             x.at[row_i, "open_directional_risk_fraction_after_v25"] = after_dir_cash[side] / equity if equity > 0 else np.inf
 
+        # New entries may not make an inherited overage worse. If the bucket was
+        # already above its percentage cap solely because realized equity fell,
+        # all new risk in that constrained bucket must be zero until exposure exits.
         tol = 1e-12
-        if after_total_cash > b.aggregate_open_risk_cap * equity + tol:
-            raise AssertionError("v0.25 aggregate cost-adjusted risk budget breached")
+        aggregate_ceiling = max(open_total_cash, b.aggregate_open_risk_cap * equity)
+        if after_total_cash > aggregate_ceiling + tol:
+            raise AssertionError("v0.25 aggregate cost-adjusted risk budget worsened")
         for side in (-1, 1):
-            if after_dir_cash[side] > b.directional_open_risk_cap * equity + tol:
-                raise AssertionError("v0.25 directional cost-adjusted risk budget breached")
+            directional_ceiling = max(open_dir_cash[side], b.directional_open_risk_cap * equity)
+            if after_dir_cash[side] > directional_ceiling + tol:
+                raise AssertionError("v0.25 directional cost-adjusted risk budget worsened")
 
     pending, equity, peak, streak, cooldown, hard_killed = _settle_before(
         x,
@@ -438,7 +440,7 @@ def apply_portfolio_allocator_v25(
         "portfolio_budget": asdict(b),
         "timeframe": timeframe,
         "causality_contract": "entry sees settlements with exit_time strictly earlier than entry_time only",
-        "allocation_contract": "same-timestamp entries share cost-adjusted aggregate and directional stop budgets pro-rata",
+        "allocation_contract": "same-timestamp entries share cost-adjusted aggregate and directional stop budgets pro-rata; inherited overage freezes new risk",
         "live_execution_authorized": False,
     }
     return x
