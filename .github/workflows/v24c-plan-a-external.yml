@@ -1,0 +1,98 @@
+name: v24c-plan-a-external
+
+on:
+  push:
+    branches: [research/v24c-multiplan-ml-validation]
+    paths:
+      - "research_bot/bybit_public.py"
+      - "research_bot/v24c_external_plan.py"
+      - "research_bot/portfolio_mtm_v24c.py"
+      - "scripts/run_v24c_plan_a_external.py"
+      - "tests/test_v24c_external_mtm_temporal.py"
+      - ".github/workflows/v24c-plan-a-external.yml"
+  pull_request:
+    paths:
+      - "research_bot/bybit_public.py"
+      - "research_bot/v24c_external_plan.py"
+      - "research_bot/portfolio_mtm_v24c.py"
+      - "scripts/run_v24c_plan_a_external.py"
+      - "tests/test_v24c_external_mtm_temporal.py"
+      - ".github/workflows/v24c-plan-a-external.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "1"
+
+jobs:
+  integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact experiment SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 1
+          clean: true
+          persist-credentials: false
+      - name: Verify provenance
+        run: test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install --no-cache-dir -e '.[dev]'
+      - name: Dependency audit
+        run: python -m pip check
+      - name: External/MTM/temporal anti-leak tests
+        run: |
+          pytest -q \
+            tests/test_v24c_external_mtm_temporal.py \
+            tests/test_evidence_ladder_v24c.py \
+            tests/test_strategy_family_meta_v24b.py \
+            tests/test_strategy_meta_v24.py
+
+  plan-a-external:
+    needs: integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact experiment SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 1
+          clean: true
+          persist-credentials: false
+      - name: Verify provenance
+        run: test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install --no-cache-dir -e '.[dev]'
+      - name: Execute Plan A exactly once per commit
+        run: python scripts/run_v24c_plan_a_external.py --output-dir artifacts/v24c-plan-a-external
+      - name: Record run provenance
+        if: always()
+        run: |
+          mkdir -p artifacts/v24c-plan-a-external
+          printf '%s\n' "${EXPECTED_SHA}" > artifacts/v24c-plan-a-external/source_commit.txt
+          python -m pip freeze --all > artifacts/v24c-plan-a-external/pip-freeze.txt
+      - name: Upload complete evidence bundle
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: v24c-plan-a-external-${{ github.run_id }}
+          path: artifacts/v24c-plan-a-external/
+          if-no-files-found: error
+          retention-days: 30
