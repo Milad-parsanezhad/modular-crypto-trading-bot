@@ -1,0 +1,65 @@
+name: v26-fresh-replication-monitor
+
+on:
+  pull_request:
+    paths:
+      - "research_bot/replication_monitor_v26.py"
+      - "scripts/run_v26_fresh_replication_monitor.py"
+      - "tests/test_replication_monitor_v26.py"
+      - ".github/workflows/v26-fresh-replication-monitor.yml"
+  push:
+    branches:
+      - "research/v20-global-strategy-risk-lab"
+    paths:
+      - "research_bot/replication_monitor_v26.py"
+      - "scripts/run_v26_fresh_replication_monitor.py"
+      - "tests/test_replication_monitor_v26.py"
+      - ".github/workflows/v26-fresh-replication-monitor.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */12 * * *"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  fresh-replication-monitor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install research package
+        run: python -m pip install -e '.[dev]'
+      - name: Lock v0.23-v0.26 causality and qualification invariants
+        run: >-
+          python -m pytest -q
+          tests/test_risk_causality_v23.py
+          tests/test_portfolio_exposure_v24.py
+          tests/test_portfolio_allocator_v25.py
+          tests/test_replication_monitor_v26.py
+      - name: Run locked-winner fresh replication monitor
+        run: >-
+          python scripts/run_v26_fresh_replication_monitor.py
+          --output-dir artifacts/v26-fresh-replication-monitor
+      - name: Print v0.26 decision
+        if: always()
+        run: cat artifacts/v26-fresh-replication-monitor/decision_v26.json || true
+      - name: Print external metrics
+        if: always()
+        run: cat artifacts/v26-fresh-replication-monitor/external_metrics_v26.json || true
+      - name: Print temporal OOS metrics
+        if: always()
+        run: cat artifacts/v26-fresh-replication-monitor/temporal_metrics_v26.json || true
+      - name: Upload v0.26 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v26-fresh-replication-monitor
+          path: artifacts/v26-fresh-replication-monitor
+          retention-days: 30
+          if-no-files-found: warn
