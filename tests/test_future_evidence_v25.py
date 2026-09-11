@@ -16,7 +16,7 @@ from research_bot.future_evidence_v25 import (
     last_safe_completed_4h_open,
     maturity_state,
 )
-from research_bot.prospective_chain_v25 import merge_append_only, stress_r_multiple
+from scripts.run_v25_future_snapshot import _merge_append_only, _stress_r_multiple
 
 
 def test_last_safe_completed_bar_excludes_in_progress_candle():
@@ -112,7 +112,7 @@ def test_append_only_chain_preserves_first_observed_bars_and_flags_restatements(
         "open": [100.5, 101.0, 102.0], "high": [102.0, 103.0, 104.0], "low": [99.0, 100.0, 101.0],
         "close": [101.5, 102.2, 103.0], "volume": [10.0, 11.0, 12.0], "source": ["new", "new", "new"],
     })
-    merged, revisions = merge_append_only(previous, fresh)
+    merged, revisions = _merge_append_only(previous, fresh)
     assert revisions == 2
     assert len(merged) == 3
     assert merged.loc[0, "open"] == 100.0
@@ -126,9 +126,9 @@ def test_cost_stress_is_monotone_and_recomputes_r_from_gross_return():
         "stop": [98.0, 102.0],
         "gross_return": [0.02, 0.02],
     })
-    r24 = stress_r_multiple(rows, 24.0).to_numpy()
-    r36 = stress_r_multiple(rows, 36.0).to_numpy()
-    r60 = stress_r_multiple(rows, 60.0).to_numpy()
+    r24 = _stress_r_multiple(rows, 24.0).to_numpy()
+    r36 = _stress_r_multiple(rows, 36.0).to_numpy()
+    r60 = _stress_r_multiple(rows, 60.0).to_numpy()
     assert np.all(r24 > r36)
     assert np.all(r36 > r60)
     np.testing.assert_allclose(r24, [(0.02 - 0.0024) / 0.02] * 2)
