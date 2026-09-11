@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
+import shutil
 import subprocess
 import sys
 import time
@@ -8,8 +10,8 @@ import time
 from research_bot.repo_recovery import bootstrap_research_branch, run_timed
 
 
-def run(cmd, cwd=None):
-    subprocess.run(cmd, cwd=cwd, check=True, capture_output=True, text=True)
+def run(cmd, cwd=None, env=None):
+    subprocess.run(cmd, cwd=cwd, env=env, check=True, capture_output=True, text=True)
 
 
 def make_remote(tmp_path: Path) -> tuple[Path, str, str]:
@@ -105,3 +107,46 @@ def test_command_timeout_opens_instead_of_hanging():
     assert result.timed_out is True
     assert result.returncode == 124
     assert result.elapsed_seconds < 1.5
+
+
+def test_direct_clone_failure_switches_method_and_removes_stale_partial_state(tmp_path, monkeypatch):
+    remote, branch, head = make_remote(tmp_path)
+    real_git = shutil.which("git")
+    assert real_git
+    wrapper_dir = tmp_path / "wrapper"
+    wrapper_dir.mkdir()
+    wrapper = wrapper_dir / "git"
+    wrapper.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [ \"${1:-}\" = \"clone\" ]; then\n"
+        "  dest=\"${@: -1}\"\n"
+        "  mkdir -p \"${dest}\"\n"
+        "  printf 'stale\\n' > \"${dest}/STALE_PARTIAL_FILE\"\n"
+        "  echo 'forced direct clone failure' >&2\n"
+        "  exit 97\n"
+        "fi\n"
+        f"exec {real_git} \"$@\"\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{wrapper_dir}{os.pathsep}{os.environ['PATH']}")
+
+    dest = tmp_path / "recovered"
+    audit = tmp_path / "audit.jsonl"
+    result = bootstrap_research_branch(
+        str(remote), branch, dest,
+        command_timeout_seconds=10,
+        expected_commit=head,
+        audit_log=audit,
+    )
+    assert result.ok is True
+    assert result.method == "init_fetch_fallback"
+    assert not (dest / "STALE_PARTIAL_FILE").exists()
+    assert (dest / "research.txt").read_text(encoding="utf-8") == "research\n"
+    actual = subprocess.check_output([real_git, "rev-parse", "HEAD"], cwd=dest, text=True).strip()
+    current = subprocess.check_output([real_git, "branch", "--show-current"], cwd=dest, text=True).strip()
+    assert actual == head
+    assert current == branch
+    audit_text = audit.read_text(encoding="utf-8")
+    assert '"event": "direct_clone"' in audit_text
+    assert '"event": "fallback_fetch"' in audit_text
