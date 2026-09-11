@@ -45,6 +45,21 @@ def test_external_fail_blocks_promotion_even_if_temporal_passes() -> None:
     assert decision["live_execution_authorized"] is False
 
 
+def test_hard_drawdown_rejects_before_minimum_trade_count() -> None:
+    ext = _metrics("external", trades=38, passed=False)
+    ext["external_profit_factor"] = 0.1089744791033107
+    ext["external_expectancy_r"] = -0.9146516547945169
+    ext["external_positive_asset_fraction"] = 0.0625
+    ext["external_max_drawdown"] = -0.05090803436384295
+    ext["external_block_ci_low"] = None
+    tmp = _metrics("temporal", trades=0, passed=False)
+    decision = qualification_decision(ext, tmp)
+    assert decision["decision"] == "REJECTED_EXTERNAL_REPLICATION"
+    assert decision["external_hard_drawdown_breached"] is True
+    assert "5% hard drawdown" in decision["reason"]
+    assert decision["forward_paper_candidate_authorized"] is False
+
+
 def test_external_pass_waits_for_fresh_temporal_sample() -> None:
     ext = _metrics("external", passed=True)
     tmp = _metrics("temporal", trades=12, passed=False)
