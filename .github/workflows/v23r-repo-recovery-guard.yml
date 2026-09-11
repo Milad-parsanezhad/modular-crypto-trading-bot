@@ -69,8 +69,6 @@ jobs:
         run: |
           set -euo pipefail
           echo "Primary checkout failed or resolved the wrong SHA; switching method immediately."
-          # Ephemeral runner only: remove the entire partial workspace, including
-          # stale .git state and files left by an interrupted checkout.
           find "${GITHUB_WORKSPACE}" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
           cd "${GITHUB_WORKSPACE}"
           git init
@@ -188,14 +186,19 @@ jobs:
           cp "${root}/fallback-result.json" artifacts/recovery/forced-fallback-result.json
           cp "${root}/fallback-audit.jsonl" artifacts/recovery/forced-fallback-audit.jsonl
 
-      - name: Final worktree and provenance check
+      - name: Final clean worktree and provenance check
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
           if [ "${RECOVERY_MODE:-}" = "fallback_exact_ref" ]; then
             test "$(git branch --show-current)" = "${EXPECTED_REF}"
           fi
-          git status --short
+          status="$(git status --porcelain)"
+          if [ -n "${status}" ]; then
+            echo "Unexpected worktree contamination detected:" >&2
+            printf '%s\n' "${status}" >&2
+            exit 88
+          fi
 
       - name: Upload recovery evidence
         if: always()
