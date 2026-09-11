@@ -10,9 +10,12 @@ though per-trade risk is small. v0.25 adds a *pre-entry* portfolio budget before
 any new position is admitted.
 
 The policy is deliberately simple and preregistered rather than optimized:
-- aggregate open risk-at-stop <= 2.0% of realized equity;
-- same-direction open risk-at-stop <= 1.5% of realized equity;
-- candidate risk still starts from the frozen v0.20 volatility/drawdown sizing;
+- aggregate cost-adjusted loss-at-stop <= 2.0% of realized equity;
+- same-direction cost-adjusted loss-at-stop <= 1.5% of realized equity;
+- candidate nominal risk still starts from the frozen v0.20 volatility/drawdown
+  sizing;
+- the budget includes the frozen 24 bps round-trip friction, so a stop whose
+  realized R is slightly below -1 cannot silently breach the intended budget;
 - simultaneous entries are scaled pro-rata as one batch, so symbol ordering
   cannot decide who receives the remaining risk budget;
 - exits stamped on the same bar are still open at that bar's entry decision,
@@ -42,12 +45,15 @@ class PortfolioRiskBudgetV25:
 
     aggregate_open_risk_cap: float = 0.020
     directional_open_risk_cap: float = 0.015
+    round_trip_cost_fraction: float = 0.0024  # 10 bps fee + 2 bps slippage, each way.
 
     def __post_init__(self) -> None:
         if not (0.0 < self.aggregate_open_risk_cap < 1.0):
             raise ValueError("aggregate_open_risk_cap must lie in (0, 1)")
         if not (0.0 < self.directional_open_risk_cap <= self.aggregate_open_risk_cap):
             raise ValueError("directional_open_risk_cap must lie in (0, aggregate cap]")
+        if not (0.0 <= self.round_trip_cost_fraction < 0.10):
+            raise ValueError("round_trip_cost_fraction must lie in [0, 0.10)")
 
 
 @dataclass(frozen=True)
@@ -57,7 +63,7 @@ class PendingPositionV25:
     row_index: int
     pnl_cash: float
     account_return_at_entry: float
-    risk_cash: float
+    stop_loss_budget_cash: float
     side: int
 
 
@@ -66,6 +72,23 @@ def _timeframe_from_spec(spec: Any) -> str:
     if timeframe not in COOLDOWN:
         raise ValueError(f"unsupported timeframe for v0.25 allocator: {timeframe!r}")
     return timeframe
+
+
+def _cost_adjusted_stop_multiple(row: pd.Series, budget: PortfolioRiskBudgetV25) -> float:
+    """Absolute stop loss in R units including the frozen round-trip friction.
+
+    Uses only entry-time-known quantities (entry, stop and the preregistered
+    transaction-cost assumption). It never reads the future exit outcome.
+    """
+
+    entry = float(row["entry"])
+    stop = float(row["stop"])
+    if not np.isfinite(entry) or not np.isfinite(stop) or entry <= 0:
+        raise ValueError("invalid entry/stop for v0.25 cost-adjusted risk budget")
+    stop_fraction = abs(stop / entry - 1.0)
+    if not np.isfinite(stop_fraction) or stop_fraction <= 0:
+        raise ValueError("non-positive stop distance in v0.25 risk budget")
+    return float(1.0 + budget.round_trip_cost_fraction / stop_fraction)
 
 
 def _settle_before(
@@ -141,10 +164,12 @@ def _settle_before(
 
 
 def _open_risk_state(pending: list[PendingPositionV25]) -> tuple[float, dict[int, float]]:
-    total = float(sum(position.risk_cash for position in pending))
+    """Return currently open cost-adjusted stop-loss budget in cash units."""
+
+    total = float(sum(position.stop_loss_budget_cash for position in pending))
     directional = {
-        -1: float(sum(position.risk_cash for position in pending if position.side < 0)),
-        1: float(sum(position.risk_cash for position in pending if position.side > 0)),
+        -1: float(sum(position.stop_loss_budget_cash for position in pending if position.side < 0)),
+        1: float(sum(position.stop_loss_budget_cash for position in pending if position.side > 0)),
     }
     return total, directional
 
@@ -157,19 +182,18 @@ def _pro_rata_batch_allocation(
     open_directional_risk_cash: dict[int, float],
     budget: PortfolioRiskBudgetV25,
 ) -> pd.Series:
-    """Allocate simultaneous proposals without arbitrary within-bar priority."""
+    """Allocate simultaneous cost-adjusted stop budgets without symbol priority."""
 
     if proposals.empty:
         return pd.Series(dtype=float)
     if equity <= 0 or not np.isfinite(equity):
         return pd.Series(0.0, index=proposals.index, dtype=float)
 
-    desired = proposals["proposed_risk_cash_v25"].astype(float).clip(lower=0.0)
+    desired = proposals["proposed_stop_loss_budget_cash_v25"].astype(float).clip(lower=0.0)
     allocated = desired.copy()
 
-    # First constrain long and short buckets independently. This approximates a
-    # systematic crypto correlation cluster without fitting a noisy correlation
-    # matrix to the same validation sample.
+    # Directional buckets approximate the common crypto systematic factor
+    # without fitting a correlation matrix on the same validation sample.
     directional_cap_cash = float(budget.directional_open_risk_cap * equity)
     for side in (-1, 1):
         mask = proposals["side"].astype(int).eq(side)
@@ -178,16 +202,12 @@ def _pro_rata_batch_allocation(
         scale = min(1.0, available / wanted) if wanted > 0 else 1.0
         allocated.loc[mask] = desired.loc[mask] * scale
 
-    # Then enforce the portfolio-wide cap on the already direction-limited batch.
     total_cap_cash = float(budget.aggregate_open_risk_cap * equity)
     available_total = max(0.0, total_cap_cash - float(open_total_risk_cash))
     wanted_total = float(allocated.sum())
     total_scale = min(1.0, available_total / wanted_total) if wanted_total > 0 else 1.0
     allocated *= total_scale
-
-    # Numerical clipping only; not a hidden tuning threshold.
-    allocated = allocated.clip(lower=0.0)
-    return allocated
+    return allocated.clip(lower=0.0)
 
 
 def apply_portfolio_allocator_v25(
@@ -197,7 +217,7 @@ def apply_portfolio_allocator_v25(
     risk_policy: RiskPsychologyPolicy | None = None,
     budget: PortfolioRiskBudgetV25 | None = None,
 ) -> pd.DataFrame:
-    """Apply causal risk governance plus pre-entry aggregate risk allocation."""
+    """Apply causal risk governance plus cost-aware pre-entry portfolio allocation."""
 
     p = risk_policy or RiskPsychologyPolicy()
     b = budget or PortfolioRiskBudgetV25()
@@ -205,7 +225,7 @@ def apply_portfolio_allocator_v25(
     if ledger.empty:
         return ledger.copy()
 
-    required = {"symbol", "entry_time", "exit_time", "r_multiple", "side"}
+    required = {"symbol", "entry_time", "exit_time", "r_multiple", "side", "entry", "stop"}
     missing = required - set(ledger.columns)
     if missing:
         raise ValueError(f"v0.25 allocator missing required columns: {sorted(missing)}")
@@ -224,6 +244,10 @@ def apply_portfolio_allocator_v25(
         "reject_reason_v25": "",
         "risk_scale_drawdown_v25": 0.0,
         "proposed_risk_fraction_v25": 0.0,
+        "proposed_nominal_risk_cash_v25": 0.0,
+        "stop_loss_multiple_abs_v25": np.nan,
+        "proposed_stop_loss_budget_cash_v25": 0.0,
+        "allocated_stop_loss_budget_cash_v25": 0.0,
         "allocated_risk_fraction_v25": 0.0,
         "portfolio_allocation_scale_v25": 0.0,
         "account_return_v25": 0.0,
@@ -259,8 +283,6 @@ def apply_portfolio_allocator_v25(
     pending: list[PendingPositionV25] = []
     sequence = 0
 
-    # Process simultaneous entries as a batch. This removes arbitrary priority
-    # from alphabetical symbol ordering when the risk budget is scarce.
     for entry_time, group in x.groupby("entry_time", sort=True):
         pending, equity, peak, streak, cooldown, hard_killed = _settle_before(
             x,
@@ -278,8 +300,8 @@ def apply_portfolio_allocator_v25(
         dd = float(equity / peak - 1.0) if peak > 0 else -np.inf
         open_total_cash, open_dir_cash = _open_risk_state(pending)
         group_indices = list(group.index)
-
         proposals: list[int] = []
+
         for row_i in group_indices:
             row = x.loc[row_i]
             side = int(row["side"])
@@ -313,65 +335,70 @@ def apply_portfolio_allocator_v25(
             vol_raw = 1.0 if pd.isna(vol_raw) else float(vol_raw)
             vol_scale = float(np.clip(vol_raw, p.vol_floor_scale, 1.0))
             proposed_fraction = min(p.max_risk_per_trade, p.base_risk_per_trade * dd_scale * vol_scale)
-            proposed_cash = float(equity * proposed_fraction)
+            proposed_nominal_cash = float(equity * proposed_fraction)
+            stop_loss_multiple = _cost_adjusted_stop_multiple(row, b)
+            proposed_stop_budget_cash = float(proposed_nominal_cash * stop_loss_multiple)
+
             x.at[row_i, "risk_scale_drawdown_v25"] = dd_scale
             x.at[row_i, "proposed_risk_fraction_v25"] = proposed_fraction
-            x.at[row_i, "proposed_risk_cash_v25"] = proposed_cash
+            x.at[row_i, "proposed_nominal_risk_cash_v25"] = proposed_nominal_cash
+            x.at[row_i, "stop_loss_multiple_abs_v25"] = stop_loss_multiple
+            x.at[row_i, "proposed_stop_loss_budget_cash_v25"] = proposed_stop_budget_cash
             proposals.append(row_i)
 
-        if not proposals:
-            continue
-
-        proposal_frame = x.loc[proposals, ["side", "proposed_risk_cash_v25"]].copy()
-        allocated_cash = _pro_rata_batch_allocation(
-            proposal_frame,
-            equity=equity,
-            open_total_risk_cash=open_total_cash,
-            open_directional_risk_cash=open_dir_cash,
-            budget=b,
-        )
-
-        # Admit every proposal with positive budget. Simultaneous entries share
-        # the constrained budget proportionally rather than being first-come.
-        new_positions: list[PendingPositionV25] = []
-        for row_i in proposals:
-            row = x.loc[row_i]
-            side = int(row["side"])
-            proposed_cash = float(row["proposed_risk_cash_v25"])
-            risk_cash = float(allocated_cash.loc[row_i])
-            if risk_cash <= 1e-15:
-                x.at[row_i, "reject_reason_v25"] = "PORTFOLIO_RISK_BUDGET_EXHAUSTED"
-                continue
-
-            risk_fraction = float(risk_cash / equity)
-            scale = float(risk_cash / proposed_cash) if proposed_cash > 0 else 0.0
-            account_return = float(risk_fraction * float(row["r_multiple"]))
-            if not np.isfinite(account_return):
-                raise ValueError("non-finite v0.25 account return")
-            if account_return <= -1.0:
-                raise ValueError("single-position entry-normalized loss <= -100% is invalid")
-            pnl_cash = float(equity * account_return)
-
-            x.at[row_i, "executed_v25"] = True
-            x.at[row_i, "allocated_risk_fraction_v25"] = risk_fraction
-            x.at[row_i, "portfolio_allocation_scale_v25"] = scale
-            x.at[row_i, "account_return_v25"] = account_return
-            x.at[row_i, "pnl_cash_v25"] = pnl_cash
-            key = (str(row["symbol"]), entry_time.date())
-            day_counts[key] = day_counts.get(key, 0) + 1
-            position = PendingPositionV25(
-                exit_time=row["exit_time"],
-                sequence=sequence,
-                row_index=row_i,
-                pnl_cash=pnl_cash,
-                account_return_at_entry=account_return,
-                risk_cash=risk_cash,
-                side=side,
+        if proposals:
+            proposal_frame = x.loc[proposals, ["side", "proposed_stop_loss_budget_cash_v25"]].copy()
+            allocated_stop_budget = _pro_rata_batch_allocation(
+                proposal_frame,
+                equity=equity,
+                open_total_risk_cash=open_total_cash,
+                open_directional_risk_cash=open_dir_cash,
+                budget=b,
             )
-            sequence += 1
-            new_positions.append(position)
 
-        pending.extend(new_positions)
+            new_positions: list[PendingPositionV25] = []
+            for row_i in proposals:
+                row = x.loc[row_i]
+                side = int(row["side"])
+                proposed_stop_budget_cash = float(row["proposed_stop_loss_budget_cash_v25"])
+                stop_loss_multiple = float(row["stop_loss_multiple_abs_v25"])
+                allocated_stop_loss_cash = float(allocated_stop_budget.loc[row_i])
+                if allocated_stop_loss_cash <= 1e-15:
+                    x.at[row_i, "reject_reason_v25"] = "PORTFOLIO_RISK_BUDGET_EXHAUSTED"
+                    continue
+
+                nominal_risk_cash = float(allocated_stop_loss_cash / stop_loss_multiple)
+                risk_fraction = float(nominal_risk_cash / equity)
+                scale = float(allocated_stop_loss_cash / proposed_stop_budget_cash) if proposed_stop_budget_cash > 0 else 0.0
+                account_return = float(risk_fraction * float(row["r_multiple"]))
+                if not np.isfinite(account_return):
+                    raise ValueError("non-finite v0.25 account return")
+                if account_return <= -1.0:
+                    raise ValueError("single-position entry-normalized loss <= -100% is invalid")
+                pnl_cash = float(equity * account_return)
+
+                x.at[row_i, "executed_v25"] = True
+                x.at[row_i, "allocated_stop_loss_budget_cash_v25"] = allocated_stop_loss_cash
+                x.at[row_i, "allocated_risk_fraction_v25"] = risk_fraction
+                x.at[row_i, "portfolio_allocation_scale_v25"] = scale
+                x.at[row_i, "account_return_v25"] = account_return
+                x.at[row_i, "pnl_cash_v25"] = pnl_cash
+                key = (str(row["symbol"]), entry_time.date())
+                day_counts[key] = day_counts.get(key, 0) + 1
+                new_positions.append(
+                    PendingPositionV25(
+                        exit_time=row["exit_time"],
+                        sequence=sequence,
+                        row_index=row_i,
+                        pnl_cash=pnl_cash,
+                        account_return_at_entry=account_return,
+                        stop_loss_budget_cash=allocated_stop_loss_cash,
+                        side=side,
+                    )
+                )
+                sequence += 1
+            pending.extend(new_positions)
+
         after_total_cash, after_dir_cash = _open_risk_state(pending)
         for row_i in group_indices:
             side = int(x.at[row_i, "side"])
@@ -380,14 +407,12 @@ def apply_portfolio_allocator_v25(
             x.at[row_i, "open_directional_risk_cash_after_v25"] = after_dir_cash[side]
             x.at[row_i, "open_directional_risk_fraction_after_v25"] = after_dir_cash[side] / equity if equity > 0 else np.inf
 
-        # Strong invariants: they convert the allocator into an executable
-        # research contract rather than a descriptive intention.
         tol = 1e-12
         if after_total_cash > b.aggregate_open_risk_cap * equity + tol:
-            raise AssertionError("v0.25 aggregate risk budget breached")
+            raise AssertionError("v0.25 aggregate cost-adjusted risk budget breached")
         for side in (-1, 1):
             if after_dir_cash[side] > b.directional_open_risk_cap * equity + tol:
-                raise AssertionError("v0.25 directional risk budget breached")
+                raise AssertionError("v0.25 directional cost-adjusted risk budget breached")
 
     pending, equity, peak, streak, cooldown, hard_killed = _settle_before(
         x,
@@ -413,7 +438,7 @@ def apply_portfolio_allocator_v25(
         "portfolio_budget": asdict(b),
         "timeframe": timeframe,
         "causality_contract": "entry sees settlements with exit_time strictly earlier than entry_time only",
-        "allocation_contract": "same-timestamp entries share aggregate and directional budgets pro-rata",
+        "allocation_contract": "same-timestamp entries share cost-adjusted aggregate and directional stop budgets pro-rata",
         "live_execution_authorized": False,
     }
     return x
