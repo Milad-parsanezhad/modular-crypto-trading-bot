@@ -41,13 +41,18 @@ The active research chain is maintained through stacked, auditable pull requests
 - **v0.23r — ML rebuild and leakage hardening:** rigorous panel splitting, feature deny-list, deterministic provenance and research-CI hardening. [PR #21](https://github.com/parsa314/modular-crypto-trading-bot/pull/21)
 - **v0.24 — strategy-aware meta-labeling:** internal test improved some local metrics but failed breadth, bootstrap, PBO/DSR and cost-stress promotion gates. **Decision: `NO_META_MODEL_PROMOTED`.** [PR #22](https://github.com/parsa314/modular-crypto-trading-bot/pull/22)
 - **v0.24b — family-specific meta-labeling + overlap-aware portfolio risk:** some family-level shadow uplift appeared, but the filtered portfolio underperformed and breached the research DD kill. **Decision: `NO_FAMILY_META_PROMOTION`.** [PR #23](https://github.com/parsa314/modular-crypto-trading-bot/pull/23)
-- **v0.24c — fresh-evidence ladder + MTM risk + temporal challengers:** external validation is fail-closed until exact frozen-model reproducibility is guaranteed. Temporal LSTM/GRU/TCN/CNN-LSTM/Transformer challengers are selected on validation only; no previous terminal test is reused for promotion. [PR #24](https://github.com/parsa314/modular-crypto-trading-bot/pull/24)
+- **v0.24c — fresh-evidence ladder + MTM risk + temporal challengers:** external validation stopped before economic scoring because exact reconstructed model selection differed by one event; temporal TCN/LSTM champions remain validation-only challengers. [PR #24](https://github.com/parsa314/modular-crypto-trading-bot/pull/24)
+- **v0.24d — exact frozen-snapshot external triangulation:** consumes the immutable v0.24b serialized model/dataset artifact under its recorded dependency environment, requires exact archived replay, then evaluates fixed OKX+KuCoin external evidence without refit or threshold retuning. [PR #25](https://github.com/parsa314/modular-crypto-trading-bot/pull/25)
 
-The v0.24c temporal run completed successfully as an engineering/validation experiment. Frozen validation challengers are **TCN (H4_S6_BREAKOUT)** and **LSTM (H4_D1_OB_BOS_RISK)**, but neither is promoted until fresh external or future-time evidence is consumed.
+The v0.24c temporal run completed successfully as an engineering/validation experiment. Frozen validation challengers are **TCN (H4_S6_BREAKOUT)** and **LSTM (H4_D1_OB_BOS_RISK)**, but neither is promoted until fresh external or future-time evidence is consumed. Both currently exceed the frozen 5% validation drawdown ceiling.
 
-The external path deliberately stopped when exact frozen-model reproduction differed by one selected validation event. That mismatch is treated as a **reproducibility defect**, not silently rounded away.
+The external v0.24c path deliberately stopped when exact frozen-model reproduction differed by one selected validation event. That mismatch is treated as a **reproducibility defect**, not silently rounded away. v0.24d is the pre-registered repair: the persisted binary itself becomes the model identity.
 
-See [`docs/PROJECT_STATUS_2026-09-11.md`](docs/PROJECT_STATUS_2026-09-11.md) for the defense-oriented evidence map.
+Defense/research navigation:
+
+- [`docs/PROJECT_STATUS_2026-09-11.md`](docs/PROJECT_STATUS_2026-09-11.md) — current evidence snapshot
+- [`docs/RESEARCH_TRACEABILITY_MATRIX.md`](docs/RESEARCH_TRACEABILITY_MATRIX.md) — research-to-code/status matrix
+- [`docs/DEFENSE_EVIDENCE_INDEX.md`](docs/DEFENSE_EVIDENCE_INDEX.md) — examiner/defense question → evidence map
 
 ## Major modules
 
@@ -55,6 +60,7 @@ See [`docs/PROJECT_STATUS_2026-09-11.md`](docs/PROJECT_STATUS_2026-09-11.md) for
 - `scripts/` — reproducible experiment entry points
 - `tests/` — leakage, causality, risk, provenance and regression tests
 - `.github/workflows/` — CI evidence pipelines and prospective collection jobs
+- `notebooks/` — Colab/teaching/defense mirrors of canonical workflows
 - `docs/` — protocols, dated result records, traceability and thesis/defense evidence
 
 ## Model families under research
@@ -129,8 +135,10 @@ Predictive models do not directly authorize exchange execution. Portfolio/risk c
 ## Repository governance
 
 - [Contribution guidelines](CONTRIBUTING.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
 - [Security policy](SECURITY.md)
 - [Citation metadata](CITATION.cff)
+- [Research PR template](.github/PULL_REQUEST_TEMPLATE.md)
 
 ---
 
