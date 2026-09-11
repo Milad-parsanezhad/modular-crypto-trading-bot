@@ -10,7 +10,7 @@ The scientific purpose is not to optimize performance during observation. It is 
 
 The v0.25 ranker was selected using development/validation evidence only. Previously consumed OKX/KuCoin results are retained as spent diagnostics and cannot promote the model.
 
-The prospective stage therefore uses a sequential/prequential research logic: predictions and portfolio decisions are frozen before newly arriving outcomes are eligible for evaluation. This is consistent with data-stream evaluation literature, where temporal order and test-before-adaptation are central, and with recent financial non-stationarity work emphasizing production-like temporal validation.
+The prospective stage therefore uses a sequential/prequential research logic: predictions and portfolio decisions are frozen before newly arriving outcomes are eligible for evaluation. This is consistent with data-stream evaluation literature, where temporal order and test-before-adaptation are central, and with financial-validation work emphasizing model-selection bias, non-stationarity and truly out-of-sample evidence.
 
 Operationally, GitHub documents that scheduled Actions run only from the default branch and may be delayed during high-load periods, especially around minute 0. The scheduler is therefore installed on `main` and runs at minute 23 rather than at the top of the hour.
 
@@ -35,7 +35,7 @@ Workflow:
 
 The workflow pins the major GitHub Actions used for checkout, Python setup and artifact upload to exact action commit SHAs. It also restores the frozen model/runtime dependency environment before reading the persisted ranker.
 
-The research-branch workflow is now engineering-only and no longer owns the production-like schedule. This prevents duplicate collectors if the research branch is later merged.
+The research-branch workflow is engineering-only and no longer owns the production-like schedule. This prevents duplicate collectors if the research branch is later merged.
 
 ## Initial ledger validation
 
@@ -67,16 +67,49 @@ Canonical hardening run:
 
 The canonical artifact contains a complete SHA-256 manifest including `decision.json`, frozen collector identity, source-run identities, environment lock, previous-run lineage and chain metadata.
 
+## Pre-boundary trigger-governance hardening
+
+A specialist review identified a second methodology risk before the prospective clock began: a workflow that remains callable by `push` or `workflow_dispatch` after the future boundary could permit an investigator-chosen first look. Even with metric blinding before maturity, allowing the economic first-read job to be manually timed is an avoidable optional-stopping / governance weakness.
+
+Two controls were therefore added **before** the frozen future boundary:
+
+1. **Trigger governance:** after `2026-09-11T16:00:00Z`, any non-`schedule` trigger is rejected before prospective evidence is read.
+2. **Scheduler continuity audit:** each accepted run records the previous accepted-run timestamp. A post-boundary scheduled run aborts before reading new evidence if the accepted-chain gap exceeds the frozen `5.5 h` tolerance. This converts GitHub's documented schedule-delay/drop behavior into an explicit fail-closed scientific condition rather than silently backfilling an unknown observation gap.
+
+The controls were validated by a final pre-boundary dry run:
+
+- Workflow run: `34611629491`
+- Artifact: `v25-prospective-evidence-ledger-34611629491`
+- Artifact ID: `10267919110`
+- Artifact digest: `sha256:2dbf88c90c853cb3ada64e365dcb0861fbdae3dbaf2c9541a28f0beb49d4e121`
+- Trigger event: `push`
+- Trigger governance: `allowed = true` because the run occurred before the boundary
+- Previous accepted run: `34602394915`
+- Observed chain gap: `1.5927777778 h`
+- Continuity status: `OK`
+- Scientific state: `WAITING_FOR_FUTURE_BOUNDARY`
+- Economics exposed: **no**
+- Sample spent: **no**
+- Chain format: `v0.25-prospective-evidence-chain-v2`
+
+The artifact hashes `trigger_governance.json` and `scheduler_continuity.json` into its chain link, in addition to the previous artifact digest, previous decision SHA-256 and frozen model/collector identities.
+
+After that dry run succeeded, commit `ebbe06fc633babd74551d313d16db38d4aa5d114` removed both `push` and `workflow_dispatch` from the production-like ledger. The ledger is now **schedule-only**. Any future engineering change to the workflow must be treated as a protocol change and documented rather than used to manually interrogate the future sample.
+
 ## Cryptographic lineage
 
-The second ledger artifact explicitly links to the first accepted artifact:
+The ledger artifacts explicitly link to the previous accepted artifact using:
 
-- previous run: `34602117989`
-- previous artifact digest: `sha256:8d87f86c6cb691dcdc685eb66244ddd840cb35f5b6f7eb586b03bc9f8538e2c9`
-- previous decision SHA-256: `cb612abd73eec907fed5ce98ec5f43a3f3b384882335bc5802bd7b32c3581361`
-- previous chain-link SHA-256: `07423e605568481d936cf8848b294b89f46e1e43aa46389923089027ac8ae511`
+- previous run ID;
+- previous artifact digest;
+- previous decision SHA-256;
+- previous chain-link SHA-256;
+- current trigger-governance SHA-256;
+- current scheduler-continuity SHA-256;
+- current decision SHA-256;
+- current frozen-snapshot identity SHA-256.
 
-This creates an auditable hash-linked evidence sequence. A later scheduled artifact records the digest and decision hash of the previously accepted artifact rather than silently replacing it.
+This creates an auditable hash-linked evidence sequence. A later scheduled artifact records the identity of the previously accepted artifact rather than silently replacing it.
 
 ## Blinding and first-look rule
 
@@ -115,7 +148,7 @@ Only a survivor advances to the CPCV/PBO/DSR search-aware audit. This stage does
 
 `live_execution_authorized = false`
 
-Because the future boundary is 16:00 UTC and a 4h candle must be completed before use, the scheduled run at 16:23 UTC is still expected to remain pre-boundary for eligible completed-bar evidence. The first scheduled run capable of observing the completed 16:00–20:00 UTC candle is the 20:23 UTC run, subject to normal GitHub Actions scheduler delay.
+Because the future boundary is 16:00 UTC and a 4h candle must be completed before use, the scheduled run at 16:23 UTC is still expected to remain pre-boundary for eligible completed-bar evidence. The first scheduled run capable of observing the completed 16:00–20:00 UTC candle is the 20:23 UTC run, subject to normal GitHub Actions scheduler delay and the continuity guard.
 
 ## Defense value
 
@@ -125,12 +158,13 @@ This stage provides direct evidence for the following thesis-defense questions:
 2. How was model identity frozen before future evaluation?
 3. How were exchange-history restatements handled?
 4. How can the examiner verify that a future artifact was not silently replaced?
-5. Why does a green CI run prove protocol integrity but not alpha?
-6. Why is validation improvement insufficient without fresh portfolio-level evidence?
+5. How were scheduler delay/drop risks converted into an explicit fail-closed rule?
+6. Why does a green CI run prove protocol integrity but not alpha?
+7. Why is validation improvement insufficient without fresh portfolio-level evidence?
 
 ## External references
 
 - GitHub Actions scheduled events: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
 - GitHub Actions workflow syntax: https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
 - Brzezinski & Stefanowski, *Prequential AUC: properties of the area under the ROC curve for data streams with concept drift*, Knowledge and Information Systems (2017).
-- Recent survey: *Non-stationarity in financial time series: A taxonomy-based survey of drift detection, adaptation, and evaluation*, Neurocomputing (2026).
+- Bailey, Borwein, López de Prado & Zhu, *The Probability of Backtest Overfitting*, Journal of Computational Finance (2015).
