@@ -1,0 +1,101 @@
+name: v35-asymmetric-meta
+
+on:
+  push:
+    branches: ["research/v35-asymmetric-meta"]
+    paths:
+      - "research_bot/asymmetric_meta_v35.py"
+      - "scripts/run_v35_asymmetric_meta.py"
+      - "tests/test_asymmetric_meta_v35.py"
+      - "docs/V35_ASYMMETRIC_META_PROTOCOL.md"
+      - ".github/workflows/v35-asymmetric-meta.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  asymmetric-meta-development:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install research package
+        run: python -m pip install -e '.[dev]'
+
+      - name: Verify v0.35 causal and fail-closed invariants
+        run: |
+          python -m pytest -q \
+            tests/test_asymmetric_meta_v35.py \
+            tests/test_drawdown_firewall_v31.py \
+            tests/test_breadth_stability_v33.py \
+            tests/test_kraken_holdout_v34.py
+
+      - name: Download frozen v0.30 consumed snapshots
+        uses: actions/download-artifact@v4
+        with:
+          name: v30-regime-event-alpha
+          path: frozen-v30
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 34632401230
+
+      - name: Download frozen v0.31 consumed KuCoin evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: v31-drawdown-firewall
+          path: frozen-v31
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 34633572528
+
+      - name: Download v0.34 Kraken-seal evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: v34-kraken-holdout
+          path: frozen-v34
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 34635635582
+
+      - name: Run v0.35 three-consumed-venue development screen
+        run: |
+          python scripts/run_v35_asymmetric_meta.py \
+            --v30-artifact-dir frozen-v30 \
+            --v31-artifact-dir frozen-v31 \
+            --v34-artifact-dir frozen-v34 \
+            --output-dir artifacts/v35-asymmetric-meta
+
+      - name: Print v0.35 scientific evidence
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pandas as pd
+          root = Path("artifacts/v35-asymmetric-meta")
+          for name in ["preregistration_v35.json", "base_event_diagnostics_v35.json", "development_lock_v35.json", "decision_v35.json"]:
+              p = root / name
+              if p.exists():
+                  print(f"\n===== {name} =====")
+                  print(p.read_text())
+          p = root / "development_summary_v35.csv"
+          if p.exists():
+              print("\n===== top development rows =====")
+              print(pd.read_csv(p).head(6).to_string(index=False))
+          PY
+
+      - name: Upload v0.35 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v35-asymmetric-meta
+          path: artifacts/v35-asymmetric-meta
+          retention-days: 90
+          if-no-files-found: warn
