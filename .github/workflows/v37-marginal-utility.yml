@@ -1,0 +1,116 @@
+name: v37-marginal-utility
+
+on:
+  push:
+    branches: ["research/v37-marginal-utility"]
+    paths:
+      - "research_bot/event_utility_v36.py"
+      - "research_bot/marginal_utility_v37.py"
+      - "scripts/run_v37_marginal_utility.py"
+      - "tests/test_event_utility_v36.py"
+      - "tests/test_marginal_utility_v37.py"
+      - "docs/V36_EXPECTED_NETR_PROTOCOL.md"
+      - "docs/V37_MARGINAL_UTILITY_PROTOCOL.md"
+      - ".github/workflows/v37-marginal-utility.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  marginal-utility-development:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install research package
+        run: python -m pip install -e '.[dev]'
+      - name: Verify v0.37 preregistration and inherited invariants
+        run: |
+          python -m pytest -q \
+            tests/test_event_utility_v36.py \
+            tests/test_marginal_utility_v37.py \
+            tests/test_drawdown_firewall_v31.py \
+            tests/test_kraken_holdout_v34.py
+      - name: Wait for frozen v0.36 run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for i in $(seq 1 120); do
+            status=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repos/${{ github.repository }}/actions/runs/34641575923 | python -c 'import json,sys; x=json.load(sys.stdin); print(x.get("status",""), x.get("conclusion") or "")')
+            echo "$status"
+            case "$status" in
+              "completed success") exit 0 ;;
+              completed*) echo "v0.36 did not complete successfully"; exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "timed out waiting for v0.36"; exit 1
+      - name: Download frozen v0.30 snapshots
+        uses: actions/download-artifact@v4
+        with:
+          name: v30-regime-event-alpha
+          path: frozen-v30
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 34632401230
+      - name: Download frozen v0.31 KuCoin evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: v31-drawdown-firewall
+          path: frozen-v31
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 34633572528
+      - name: Download Kraken seal evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: v34-kraken-holdout
+          path: frozen-v34
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 34635635582
+      - name: Download frozen v0.35 rejection
+        uses: actions/download-artifact@v4
+        with:
+          name: v35-asymmetric-meta
+          path: frozen-v35
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 34637596442
+      - name: Download frozen v0.36 event-utility evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: v36-expected-netr
+          path: frozen-v36
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 34641575923
+      - name: Run v0.37 marginal-utility portfolio arbitration
+        run: |
+          python scripts/run_v37_marginal_utility.py \
+            --v30-artifact-dir frozen-v30 \
+            --v31-artifact-dir frozen-v31 \
+            --v34-artifact-dir frozen-v34 \
+            --v35-artifact-dir frozen-v35 \
+            --v36-artifact-dir frozen-v36 \
+            --v36-run-id 34641575923 \
+            --output-dir artifacts/v37-marginal-utility
+      - name: Print v0.37 scientific evidence
+        run: |
+          cat artifacts/v37-marginal-utility/decision_v37.json
+          python - <<'PY'
+          import pandas as pd
+          print(pd.read_csv('artifacts/v37-marginal-utility/development_summary_v37.csv').to_string(index=False))
+          PY
+      - name: Upload v0.37 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v37-marginal-utility
+          path: artifacts/v37-marginal-utility
+          retention-days: 90
