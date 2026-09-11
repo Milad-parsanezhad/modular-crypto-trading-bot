@@ -1,4 +1,4 @@
-name: v25-prospective-future-evidence
+name: v25-prospective-future-evidence-engineering
 
 on:
   push:
@@ -19,17 +19,17 @@ on:
       - "tests/test_future_evidence_v25.py"
       - ".github/workflows/v25-prospective-future-evidence.yml"
   workflow_dispatch:
-  schedule:
-    # This schedule is useful only once the workflow exists on the default branch.
-    # Deliberately avoid minute 0: GitHub documents higher delay/drop risk there.
-    - cron: "23 0,4,8,12,16,20 * * *"
+
+# IMPORTANT: This branch workflow is engineering validation only. The only
+# scheduled prospective evidence chain lives on the default branch in
+# v25-prospective-evidence-ledger.yml and checks out a fixed collector SHA.
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: v25-prospective-future-evidence-${{ github.ref }}
+  group: v25-prospective-future-evidence-engineering-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -42,11 +42,11 @@ env:
   PIP_NO_CACHE_DIR: "1"
 
 jobs:
-  prospective-collector:
+  prospective-collector-engineering:
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     steps:
-      - name: Checkout exact collector SHA
+      - name: Checkout exact experiment SHA
         uses: actions/checkout@v7
         with:
           ref: ${{ env.EXPECTED_SHA }}
@@ -89,32 +89,8 @@ jobs:
           test -f frozen/v25/ranker_manifest.json
           test -f frozen/v25/decision.json
 
-      - name: Recover previous append-only evidence artifact when available
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          rm -rf previous
-          mkdir -p previous
-          # PR runs are engineering validation only and intentionally start without
-          # a prior prospective artifact. Persistent recovery is used by branch/main
-          # scheduled runs where GITHUB_REF_NAME is a stable branch name.
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
-            echo "PREVIOUS_ARG=" >> "${GITHUB_ENV}"
-            exit 0
-          fi
-          WORKFLOW="v25-prospective-future-evidence.yml"
-          BRANCH="${GITHUB_REF_NAME}"
-          PREV_RUN=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW}/runs?branch=${BRANCH}&status=completed&per_page=30" \
-            --jq ".workflow_runs[] | select(.id != ${GITHUB_RUN_ID}) | select(.conclusion == \"success\") | .id" 2>/dev/null | head -n 1 || true)
-          if [ -n "${PREV_RUN}" ]; then
-            PREV_ARTIFACT="v25-prospective-evidence-${PREV_RUN}"
-            gh run download "${PREV_RUN}" --repo "${GITHUB_REPOSITORY}" --name "${PREV_ARTIFACT}" --dir previous || true
-          fi
-          if [ -f previous/decision.json ]; then
-            echo "PREVIOUS_ARG=--previous-dir previous" >> "${GITHUB_ENV}"
-          else
-            echo "PREVIOUS_ARG=" >> "${GITHUB_ENV}"
-          fi
+      - name: Validate Colab JSON
+        run: python -m json.tool notebooks/V25_Risk_Aware_Ranking_Forward_Colab.ipynb >/dev/null
 
       - name: Prospective causality and first-look tests
         run: |
@@ -123,49 +99,38 @@ jobs:
             tests/test_frozen_snapshot_v24d.py \
             tests/test_risk_ranker_v25.py
 
-      - name: Collect blinded future snapshot or execute the one permitted mature read
+      - name: Engineering dry-run of prospective snapshot
         run: |
           python scripts/run_v25_future_snapshot.py \
             --v24b-dir frozen/v24b \
             --v25-dir frozen/v25 \
-            --output-dir artifacts/v25-prospective-evidence \
-            ${PREVIOUS_ARG}
+            --output-dir artifacts/v25-prospective-evidence-engineering
 
-      - name: Verify fail-closed prospective decision
+      - name: Verify fail-closed decision contract
         run: |
           python - <<'PY'
           import json
-          p = 'artifacts/v25-prospective-evidence/decision.json'
+          p = 'artifacts/v25-prospective-evidence-engineering/decision.json'
           d = json.load(open(p, encoding='utf-8'))
           assert d.get('forward_paper_authorized') is False, d
           assert d.get('paper_replacement_authorized') is False, d
           assert d.get('live_execution_authorized') is False, d
-          state = d.get('state')
-          terminal = {'FUTURE_ALLOCATOR_GATE_PASS_PRE_SEARCH_AUDIT', 'FUTURE_ALLOCATOR_GATE_FAIL'}
-          if state in terminal:
-              assert d.get('sample_spent') is True, d
-              assert d.get('first_mature_read_is_terminal') is True, d
-          elif state != 'WAITING_FOR_FUTURE_BOUNDARY':
-              assert d.get('economics_blinded') is True, d
-              assert d.get('sample_spent') is False, d
           PY
 
-      - name: Record defense-grade run provenance
+      - name: Record engineering provenance
         if: always()
         run: |
-          mkdir -p artifacts/v25-prospective-evidence
-          printf '%s\n' "${EXPECTED_SHA}" > artifacts/v25-prospective-evidence/collector_source_commit.txt
-          printf '%s\n' "${GITHUB_RUN_ID}" > artifacts/v25-prospective-evidence/workflow_run_id.txt
-          printf '%s\n' "${V24B_RUN_ID}" > artifacts/v25-prospective-evidence/frozen_v24b_source_run.txt
-          printf '%s\n' "${V25_RANK_RUN_ID}" > artifacts/v25-prospective-evidence/frozen_ranker_source_run.txt
-          python -m pip freeze --all > artifacts/v25-prospective-evidence/pip-freeze.txt
+          mkdir -p artifacts/v25-prospective-evidence-engineering
+          printf '%s\n' "${EXPECTED_SHA}" > artifacts/v25-prospective-evidence-engineering/source_commit.txt
+          printf '%s\n' "${GITHUB_RUN_ID}" > artifacts/v25-prospective-evidence-engineering/workflow_run_id.txt
+          python -m pip freeze --all > artifacts/v25-prospective-evidence-engineering/pip-freeze.txt
 
-      - name: Upload immutable prospective snapshot
+      - name: Upload engineering artifact
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: v25-prospective-evidence-${{ github.run_id }}
-          path: artifacts/v25-prospective-evidence/
+          name: v25-prospective-engineering-${{ github.run_id }}
+          path: artifacts/v25-prospective-evidence-engineering/
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 30
           compression-level: 9
