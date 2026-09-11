@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Locked v0.26 replication/forward-OOS qualification helpers.
 
-v0.26 does not tune a strategy.  It monitors the single v0.25 winner with the
+v0.26 does not tune a strategy. It monitors the single v0.25 winner with the
 frozen v0.25 allocator and the frozen v0.20 external qualification gates.
 Live execution is never authorized here.
 """
@@ -35,12 +35,7 @@ def filter_fresh_temporal_attempts(
     *,
     anchor: pd.Timestamp = V25_SELECTION_LOCK_UTC,
 ) -> pd.DataFrame:
-    """Keep only attempts whose *signal* became known strictly after v0.25 lock.
-
-    Filtering on signal time prevents a pre-lock signal with a post-lock fill
-    from leaking into the supposedly fresh temporal OOS sample.
-    """
-
+    """Keep only attempts whose signal became known strictly after v0.25 lock."""
     if attempts.empty:
         return attempts.copy()
     x = attempts.copy()
@@ -53,7 +48,6 @@ def filter_fresh_temporal_attempts(
 
 def compact_replication_metrics(raw: dict[str, Any], *, prefix: str) -> dict[str, Any]:
     """Convert evaluate_external_replication_v25 output into a stable v0.26 shape."""
-
     def finite_number(key: str) -> float | None:
         value = raw.get(key)
         try:
@@ -110,6 +104,21 @@ def gate_failures(metrics: dict[str, Any], *, prefix: str, policy: V26Qualificat
     return failures
 
 
+def _hard_drawdown_breached(metrics: dict[str, Any], *, prefix: str, policy: V26QualificationPolicy) -> bool:
+    """A frozen safety limit is sequential: breaching it rejects immediately.
+
+    The minimum-trade requirement protects inference from small samples, but it
+    cannot override an already-realized hard 5% drawdown breach. Otherwise a
+    strategy killed by the risk engine before 200 trades would be mislabeled as
+    merely 'insufficient evidence' forever.
+    """
+    try:
+        dd = abs(float(metrics.get(f"{prefix}_max_drawdown")))
+    except (TypeError, ValueError):
+        return False
+    return bool(np.isfinite(dd) and dd > policy.max_drawdown)
+
+
 def qualification_decision(
     external: dict[str, Any],
     temporal: dict[str, Any],
@@ -118,11 +127,11 @@ def qualification_decision(
 ) -> dict[str, Any]:
     """Return the only permitted v0.26 promotion state.
 
-    A strategy can become a FORWARD_PAPER_CANDIDATE only when both the newly
-    fetched external-venue replication and the strictly post-lock temporal OOS
-    clear the unchanged gates.  No live-capital state exists in this function.
+    Promotion requires both the newly fetched external-venue replication and
+    the strictly post-lock temporal OOS to clear unchanged gates. Hard drawdown
+    is a sequential safety gate and causes immediate rejection even before the
+    minimum inferential sample size is reached.
     """
-
     p = policy or V26QualificationPolicy()
     ext_n = int(external.get("external_trades", 0) or 0)
     tmp_n = int(temporal.get("temporal_trades", 0) or 0)
@@ -132,13 +141,21 @@ def qualification_decision(
     tmp_enough = tmp_n >= p.min_temporal_trades
     ext_pass = bool(external.get("external_pass", False)) and not ext_fail
     tmp_pass = bool(temporal.get("temporal_pass", False)) and not tmp_fail
+    ext_hard_dd = _hard_drawdown_breached(external, prefix="external", policy=p)
+    tmp_hard_dd = _hard_drawdown_breached(temporal, prefix="temporal", policy=p)
 
-    if not ext_enough:
+    if ext_hard_dd:
+        state = "REJECTED_EXTERNAL_REPLICATION"
+        reason = "The locked v0.25 winner breached the frozen 5% hard drawdown limit on the fresh external venue before completing the minimum trade count."
+    elif not ext_enough:
         state = "EXTERNAL_EVIDENCE_INSUFFICIENT"
         reason = "Fresh external venue has not yet produced the frozen minimum trade count."
     elif not ext_pass:
         state = "REJECTED_EXTERNAL_REPLICATION"
         reason = "The locked v0.25 winner failed at least one frozen external replication gate."
+    elif tmp_hard_dd:
+        state = "REJECTED_FRESH_TEMPORAL_OOS"
+        reason = "The strictly post-lock temporal OOS breached the frozen 5% hard drawdown limit before completing the minimum trade count."
     elif not tmp_enough:
         state = "EXTERNAL_PASS_TEMPORAL_ACCUMULATING"
         reason = "External replication passed; strictly post-lock temporal OOS is still accumulating evidence."
@@ -157,6 +174,8 @@ def qualification_decision(
         "timeframe": LOCKED_TIMEFRAME_V26,
         "external_failures": ext_fail,
         "temporal_failures": tmp_fail,
+        "external_hard_drawdown_breached": ext_hard_dd,
+        "temporal_hard_drawdown_breached": tmp_hard_dd,
         "v25_selection_lock_utc": V25_SELECTION_LOCK_UTC.isoformat(),
         "threshold_relaxation": False,
         "strategy_retuning": False,
