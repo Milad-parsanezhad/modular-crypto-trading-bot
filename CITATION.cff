@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+title: "Modular Crypto Trading Bot: Evidence-Driven Financial ML Research Platform"
+message: "If you use this research software or its documented experimental methodology, please cite this repository and the relevant dated result/protocol document."
+type: software
+authors:
+  - family-names: "Parsanezhad"
+    given-names: "Milad"
+repository-code: "https://github.com/parsa314/modular-crypto-trading-bot"
+url: "https://github.com/parsa314/modular-crypto-trading-bot"
+version: "1.0.0-rc1"
+date-released: "2026-09-11"
+keywords:
+  - financial machine learning
+  - cryptocurrency
+  - algorithmic trading research
+  - reproducible research
+  - reinforcement learning
+  - time series
+  - meta-labeling
+license: "NOASSERTION"
