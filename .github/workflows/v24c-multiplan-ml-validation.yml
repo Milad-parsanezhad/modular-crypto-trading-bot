@@ -54,7 +54,7 @@ jobs:
           pytest -q \
             tests/test_evidence_ladder_v24c.py \
             tests/test_strategy_meta_v24.py \
-            tests/test_family_meta_portfolio_v24b.py \
+            tests/test_strategy_family_meta_v24b.py \
             tests/test_ml_framework_v23r.py \
             tests/test_ml_audit_v23r.py \
             tests/test_ml_meta_v21.py \
