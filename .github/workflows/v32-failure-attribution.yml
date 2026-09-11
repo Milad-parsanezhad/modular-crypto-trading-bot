@@ -1,0 +1,48 @@
+name: v32-failure-attribution
+
+on:
+  push:
+    branches: ["research/v32-failure-attribution"]
+    paths:
+      - "research_bot/failure_attribution_v32.py"
+      - "scripts/run_v32_failure_attribution.py"
+      - "tests/test_failure_attribution_v32.py"
+      - ".github/workflows/v32-failure-attribution.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  failure-attribution:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install research package
+        run: python -m pip install -e '.[dev]'
+      - name: Verify v0.32 diagnostic invariants
+        run: python -m pytest -q tests/test_failure_attribution_v32.py tests/test_drawdown_firewall_v31.py tests/test_qualification_v31.py
+      - name: Download frozen v0.31 evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: v31-drawdown-firewall
+          path: frozen-v31
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 34633572528
+      - name: Attribute consumed KuCoin failure
+        run: python scripts/run_v32_failure_attribution.py --v31-artifact-dir frozen-v31 --output-dir artifacts/v32-failure-attribution
+      - name: Print attribution
+        run: cat artifacts/v32-failure-attribution/failure_attribution_v32.json
+      - name: Upload v0.32 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v32-failure-attribution
+          path: artifacts/v32-failure-attribution
+          retention-days: 90
