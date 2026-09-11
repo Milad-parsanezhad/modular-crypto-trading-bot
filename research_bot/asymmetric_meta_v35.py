@@ -34,6 +34,7 @@ from research_bot.regime_event_alpha_v30 import (
     _prior_extreme,
     _standardized_cusum,
     _volume_confirm,
+    persistent_market_regime,
 )
 
 
@@ -103,7 +104,9 @@ def preregistration_manifest_v35() -> dict[str, Any]:
 
 
 def cross_sectional_context_v35(frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """Causal 20d/60d relative-strength ranks and lagged dispersion state."""
+    """Causal 20d/60d relative-strength ranks, dispersion and true BTC regime."""
+    if "BTC/USDT" not in frames:
+        raise ValueError("v0.35 cross-sectional context requires BTC/USDT")
     parts: list[pd.DataFrame] = []
     for symbol, frame in sorted(frames.items()):
         x = frame[["timestamp", "close"]].copy().sort_values("timestamp").reset_index(drop=True)
@@ -115,7 +118,7 @@ def cross_sectional_context_v35(frames: dict[str, pd.DataFrame]) -> pd.DataFrame
     if not parts:
         return pd.DataFrame(columns=[
             "timestamp", "symbol", "rank20_v35", "rank60_v35", "rs_score_v35",
-            "dispersion_v35", "dispersion_cap_v35", "dispersion_ratio_v35",
+            "dispersion_v35", "dispersion_cap_v35", "dispersion_ratio_v35", "market_regime_v35",
         ])
     long = pd.concat(parts, ignore_index=True).sort_values(["timestamp", "symbol"]).reset_index(drop=True)
     long["rank20_v35"] = long.groupby("timestamp", sort=False)["mom20_v35"].rank(pct=True, method="average")
@@ -129,7 +132,13 @@ def cross_sectional_context_v35(frames: dict[str, pd.DataFrame]) -> pd.DataFrame
         "dispersion_cap_v35": cap.to_numpy(),
     })
     d["dispersion_ratio_v35"] = d["dispersion_v35"] / d["dispersion_cap_v35"].replace(0, np.nan)
-    return long.merge(d, on="timestamp", how="left", validate="many_to_one")
+    regime = persistent_market_regime(frames["BTC/USDT"], "1d").rename(
+        columns={"market_regime_v30": "market_regime_v35"}
+    )
+    return (
+        long.merge(d, on="timestamp", how="left", validate="many_to_one")
+        .merge(regime, on="timestamp", how="left", validate="many_to_one")
+    )
 
 
 def generate_asymmetric_direction_v35(
@@ -187,16 +196,20 @@ def attach_event_context_v35(events: pd.DataFrame, context: pd.DataFrame) -> pd.
     c = context.copy()
     c["timestamp"] = pd.to_datetime(c["timestamp"], utc=True, errors="raise")
     c = c.rename(columns={"timestamp": "signal_time"})
-    keep = ["signal_time", "symbol", "rank20_v35", "rank60_v35", "rs_score_v35", "dispersion_ratio_v35"]
+    keep = [
+        "signal_time", "symbol", "rank20_v35", "rank60_v35", "rs_score_v35",
+        "dispersion_ratio_v35", "market_regime_v35",
+    ]
     x = x.merge(c[keep], on=["signal_time", "symbol"], how="left", validate="many_to_one")
     x["rs_bucket_v35"] = pd.cut(
         x["rs_score_v35"], bins=[-np.inf, 1/3, 2/3, np.inf], labels=[0, 1, 2]
     ).astype("float")
-    x["dispersion_bucket_v35"] = (pd.to_numeric(x["dispersion_ratio_v35"], errors="coerce") > 1.0).astype("int8")
-    # Base generator already stored the market regime in the ledger only indirectly;
-    # infer the asymmetric state from side semantics for grouping while keeping the
-    # causal signal rule itself in generate_asymmetric_direction_v35.
-    x["regime_group_v35"] = np.where(x["side"].astype(int) > 0, 1, -1).astype("int8")
+    x["dispersion_bucket_v35"] = (
+        pd.to_numeric(x["dispersion_ratio_v35"], errors="coerce") > 1.0
+    ).astype("int8")
+    x["regime_group_v35"] = (
+        pd.to_numeric(x["market_regime_v35"], errors="coerce").fillna(0).astype("int8")
+    )
     return x
 
 
@@ -247,7 +260,7 @@ def causal_empirical_bayes_meta_score_v35(events: pd.DataFrame) -> pd.DataFrame:
             y = 1.0 if float(old["r_multiple"]) > 0.0 else 0.0
             w = _duration_weight(old)
             for key in keys(old):
-                slot = stats.setdefault(key, [0.0, 0.0, 0.0])  # weight, weighted wins, count
+                slot = stats.setdefault(key, [0.0, 0.0, 0.0])
                 slot[0] += w
                 slot[1] += w * y
                 slot[2] += 1.0
