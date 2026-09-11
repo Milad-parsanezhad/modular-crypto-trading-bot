@@ -1,0 +1,136 @@
+name: v24d-frozen-snapshot-external
+
+on:
+  push:
+    branches: [research/v24d-frozen-snapshot-external]
+    paths:
+      - "research_bot/frozen_snapshot_v24d.py"
+      - "scripts/run_v24d_frozen_snapshot_external.py"
+      - "tests/test_frozen_snapshot_v24d.py"
+      - "docs/V24D_FROZEN_SNAPSHOT_EXTERNAL_PROTOCOL.md"
+      - "notebooks/V24D_Frozen_Snapshot_External_Colab.ipynb"
+      - ".github/workflows/v24d-frozen-snapshot-external.yml"
+  pull_request:
+    paths:
+      - "research_bot/frozen_snapshot_v24d.py"
+      - "scripts/run_v24d_frozen_snapshot_external.py"
+      - "tests/test_frozen_snapshot_v24d.py"
+      - "docs/V24D_FROZEN_SNAPSHOT_EXTERNAL_PROTOCOL.md"
+      - "notebooks/V24D_Frozen_Snapshot_External_Colab.ipynb"
+      - ".github/workflows/v24d-frozen-snapshot-external.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+  SOURCE_RUN_ID: "34578494059"
+  SOURCE_ARTIFACT: "v24b-family-portfolio-34578494059"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "1"
+
+jobs:
+  frozen-snapshot-external:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout exact experiment SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 1
+          clean: true
+          persist-credentials: false
+
+      - name: Verify source-code provenance
+        run: test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install project and exact frozen persistence environment
+        run: |
+          python -m pip install --no-cache-dir -e '.[dev]'
+          python -m pip install --no-cache-dir --upgrade --force-reinstall \
+            'numpy==2.5.3' \
+            'pandas==3.0.5' \
+            'scikit-learn==1.9.1' \
+            'joblib==1.6.0' \
+            'scipy==1.18.1' \
+            'threadpoolctl==3.6.0' \
+            'cloudpickle==3.1.2'
+          python -m pip check
+
+      - name: Download immutable v0.24b artifact by frozen run identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf frozen/v24b
+          mkdir -p frozen/v24b
+          # Use GitHub's documented cross-run CLI route. Scientific identity is
+          # established by the subsequent file SHA-256 checks, not by transport.
+          gh run download "${SOURCE_RUN_ID}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --name "${SOURCE_ARTIFACT}" \
+            --dir frozen/v24b
+          test -f frozen/v24b/family_validation_frozen_champions.joblib
+          test -f frozen/v24b/strategy_event_dataset.csv
+          test -f frozen/v24b/family_validation_leaderboard.csv
+          test -f frozen/v24b/decision.json
+
+      - name: Validate defense Colab JSON
+        run: python -m json.tool notebooks/V24D_Frozen_Snapshot_External_Colab.ipynb >/dev/null
+
+      - name: Unit integrity guards
+        run: pytest -q tests/test_frozen_snapshot_v24d.py tests/test_v24c_external_mtm_temporal.py tests/test_strategy_family_meta_v24b.py
+
+      - name: Exact binary replay then dual-venue external triangulation
+        run: |
+          python scripts/run_v24d_frozen_snapshot_external.py \
+            --snapshot-dir frozen/v24b \
+            --output-dir artifacts/v24d-frozen-snapshot-external
+
+      - name: Record defense-grade environment and provenance
+        if: always()
+        run: |
+          mkdir -p artifacts/v24d-frozen-snapshot-external
+          printf '%s\n' "${EXPECTED_SHA}" > artifacts/v24d-frozen-snapshot-external/source_commit.txt
+          printf '%s\n' "${SOURCE_RUN_ID}" > artifacts/v24d-frozen-snapshot-external/frozen_source_run.txt
+          printf '%s\n' "${SOURCE_ARTIFACT}" > artifacts/v24d-frozen-snapshot-external/frozen_source_artifact.txt
+          python -m pip freeze --all > artifacts/v24d-frozen-snapshot-external/pip-freeze.txt
+          python - <<'PY'
+          import hashlib, json, pathlib, platform, sys
+          root = pathlib.Path('frozen/v24b')
+          names = [
+              'family_validation_frozen_champions.joblib',
+              'strategy_event_dataset.csv',
+              'family_validation_leaderboard.csv',
+              'decision.json',
+          ]
+          hashes = {}
+          for name in names:
+              p = root / name
+              if p.exists():
+                  hashes[name] = hashlib.sha256(p.read_bytes()).hexdigest()
+          payload = {
+              'python': sys.version,
+              'platform': platform.platform(),
+              'frozen_file_sha256': hashes,
+          }
+          pathlib.Path('artifacts/v24d-frozen-snapshot-external/environment_provenance.json').write_text(
+              json.dumps(payload, indent=2), encoding='utf-8'
+          )
+          PY
+
+      - name: Upload complete v0.24d evidence bundle
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: v24d-frozen-snapshot-external-${{ github.run_id }}
+          path: artifacts/v24d-frozen-snapshot-external/
+          if-no-files-found: error
+          retention-days: 30
