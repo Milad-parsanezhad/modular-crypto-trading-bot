@@ -1,0 +1,8 @@
+title: AI Cryptocurrency Trading Bot Research
+description: Evidence-driven MSc research on AI crypto trading with financial machine learning, deep learning, reinforcement learning, portfolio optimization, CVaR risk management and reproducible out-of-sample validation.
+url: ""
+baseurl: ""
+markdown: kramdown
+theme: minima
+plugins:
+  - jekyll-seo-tag
