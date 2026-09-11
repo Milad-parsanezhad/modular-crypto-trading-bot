@@ -1,0 +1,40 @@
+name: v41-shadow-execution
+on:
+  push:
+    branches: [research/v41-shadow-execution]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  shadow-execution-validation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Verify fail-closed execution controls
+        run: python -m pytest -q tests/test_shadow_execution_v41.py tests/test_execution_stress_v40.py tests/test_kraken_holdout_v34.py
+      - name: Download frozen v0.40 decision
+        uses: actions/download-artifact@v4
+        with:
+          name: v40-execution-stress
+          path: frozen-v40
+          github-token: ${{ github.token }}
+          repository: parsa314/modular-crypto-trading-bot
+          run-id: 34643024579
+      - name: Run paper and shadow execution smoke path
+        run: python scripts/run_v41_shadow_execution.py --v40-artifact-dir frozen-v40 --output-dir artifacts/v41-shadow-execution
+      - name: Prove live order transmission remains disabled
+        run: |
+          cat artifacts/v41-shadow-execution/decision_v41.json
+          cat artifacts/v41-shadow-execution/engine_validation_v41.json
+          ! grep -R '"live_execution_authorized": true' artifacts/v41-shadow-execution
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v41-shadow-execution
+          path: artifacts/v41-shadow-execution
+          retention-days: 90
