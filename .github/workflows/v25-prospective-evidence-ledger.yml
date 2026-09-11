@@ -179,11 +179,6 @@ jobs:
               'current_identity_sha256':digest(out/'future_snapshot_identity.json') if (out/'future_snapshot_identity.json').is_file() else None,
           }
           (out/'chain_link.json').write_text(json.dumps(link, indent=2, sort_keys=True)+'\n', encoding='utf-8')
-          rows=[]
-          for p in sorted(out.rglob('*')):
-              if p.is_file() and p.name != 'ARTIFACT_MANIFEST.sha256':
-                  rows.append(f"{digest(p)}  {p.relative_to(out).as_posix()}")
-          (out/'ARTIFACT_MANIFEST.sha256').write_text('\n'.join(rows)+'\n', encoding='utf-8')
           PY
 
       - name: Record defense-grade environment provenance
@@ -193,6 +188,26 @@ jobs:
           printf '%s\n' "${V24B_RUN_ID}" > artifacts/v25-prospective-evidence/frozen_v24b_source_run.txt
           printf '%s\n' "${V25_RANK_RUN_ID}" > artifacts/v25-prospective-evidence/frozen_ranker_source_run.txt
           python -m pip freeze --all > artifacts/v25-prospective-evidence/pip-freeze.txt
+
+      - name: Finalize complete artifact manifest
+        if: always()
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from hashlib import sha256
+          out=Path('artifacts/v25-prospective-evidence')
+          def digest(p):
+              h=sha256()
+              with p.open('rb') as f:
+                  for b in iter(lambda:f.read(1024*1024), b''):
+                      h.update(b)
+              return h.hexdigest()
+          rows=[]
+          for p in sorted(out.rglob('*')):
+              if p.is_file() and p.name != 'ARTIFACT_MANIFEST.sha256':
+                  rows.append(f"{digest(p)}  {p.relative_to(out).as_posix()}")
+          (out/'ARTIFACT_MANIFEST.sha256').write_text('\n'.join(rows)+'\n', encoding='utf-8')
+          PY
 
       - name: Upload immutable prospective evidence ledger
         if: always()
