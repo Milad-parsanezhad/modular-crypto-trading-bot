@@ -41,6 +41,10 @@ def ledger(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
+def no_cooldown_policy() -> RiskPsychologyPolicy:
+    return RiskPsychologyPolicy(max_consecutive_losses=999)
+
+
 def test_preregistration_keeps_five_percent_gate_and_kucoin_reserved() -> None:
     m = preregistration_manifest_v31()
     assert m["candidate_count"] == 12
@@ -62,24 +66,25 @@ def test_headroom_formula_is_relative_to_realized_peak() -> None:
 
 
 def test_firewall_prevents_sequential_stop_losses_from_crossing_five_percent() -> None:
-    rows = [{"r_multiple": -1.024, "symbol": f"S{i}/USDT"} for i in range(40)]
-    out = apply_drawdown_firewall_v31(ledger(rows), Spec())
+    rows = [{"r_multiple": -1.024, "symbol": f"S{i}/USDT"} for i in range(80)]
+    out = apply_drawdown_firewall_v31(ledger(rows), Spec(), risk_policy=no_cooldown_policy())
     settled = pd.to_numeric(out["settlement_drawdown_v25"], errors="coerce").dropna()
     assert len(settled) > 0
     assert float(settled.min()) >= -0.05 - 1e-12
-    assert out["reject_reason_v25"].astype(str).isin(["DRAWDOWN_FIREWALL_EXHAUSTED", "HARD_DRAWDOWN_KILL", ""]).any()
+    assert out["reject_reason_v25"].astype(str).eq("DRAWDOWN_FIREWALL_EXHAUSTED").any()
 
 
 def test_near_floor_entry_is_scaled_by_remaining_headroom() -> None:
-    # Four prior stop losses move realized equity close to the hard floor; the
-    # next proposal must be smaller than its nominal v0.25 risk request.
-    rows = [{"r_multiple": -1.024, "symbol": f"L{i}/USDT"} for i in range(5)]
-    out = apply_drawdown_firewall_v31(ledger(rows), Spec())
+    # Disable the unrelated loss-streak cooldown in this synthetic unit test so
+    # enough sequential losses can reach the narrow pre-entry DD headroom zone.
+    rows = [{"r_multiple": -1.024, "symbol": f"L{i}/USDT"} for i in range(80)]
+    out = apply_drawdown_firewall_v31(ledger(rows), Spec(), risk_policy=no_cooldown_policy())
     executed = out[out["executed_v25"] == True]  # noqa: E712
     assert len(executed) >= 2
     assert bool(executed["firewall_constrained_v31"].fillna(False).any())
     constrained = executed[executed["firewall_constrained_v31"] == True]  # noqa: E712
     assert (constrained["portfolio_allocation_scale_v25"] < 1.0).all()
+    assert float(pd.to_numeric(executed["settlement_drawdown_v25"], errors="coerce").min()) >= -0.05 - 1e-12
 
 
 def test_simultaneous_batch_is_symbol_order_invariant() -> None:
