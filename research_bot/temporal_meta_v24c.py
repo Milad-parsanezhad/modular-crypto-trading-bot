@@ -47,12 +47,19 @@ class TemporalMetaContract:
 
 
 def causal_normalized_feature_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
-    """Build feature values whose normalization at t uses observations <= t-1."""
+    """Build feature values whose normalization at t uses observations <= t-1.
+
+    A feature that has been constant over all available history has zero estimated
+    scale. Mapping that scale to 1.0 yields a normalized value of zero instead of
+    discarding an otherwise valid sequence. Warm-up NaNs remain NaN, so no future
+    statistic is borrowed to make an early row usable.
+    """
     feat = causal_bar_features(frame)
     cols = [c for c in feat.columns if c != "timestamp"]
     f = feat[cols].astype(float)
     mean = f.expanding(min_periods=30).mean().shift(1)
-    std = f.expanding(min_periods=30).std(ddof=0).shift(1).replace(0, np.nan)
+    std = f.expanding(min_periods=30).std(ddof=0).shift(1)
+    std = std.mask(std.abs() <= 1e-12, 1.0)
     z = ((f - mean) / std).clip(-10, 10)
     out = pd.concat([pd.to_datetime(feat["timestamp"], utc=True).rename("timestamp"), z], axis=1)
     return out, cols
