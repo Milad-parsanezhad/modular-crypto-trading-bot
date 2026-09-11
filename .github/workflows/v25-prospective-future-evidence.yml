@@ -1,0 +1,136 @@
+name: v25-prospective-future-evidence-engineering
+
+on:
+  push:
+    branches: [research/v25-risk-aware-ranking-forward]
+    paths:
+      - "research_bot/future_evidence_v25.py"
+      - "research_bot/ccxt_external_v24c.py"
+      - "scripts/run_v25_future_snapshot.py"
+      - "scripts/__init__.py"
+      - "tests/test_future_evidence_v25.py"
+      - ".github/workflows/v25-prospective-future-evidence.yml"
+  pull_request:
+    paths:
+      - "research_bot/future_evidence_v25.py"
+      - "research_bot/ccxt_external_v24c.py"
+      - "scripts/run_v25_future_snapshot.py"
+      - "scripts/__init__.py"
+      - "tests/test_future_evidence_v25.py"
+      - ".github/workflows/v25-prospective-future-evidence.yml"
+  workflow_dispatch:
+
+# IMPORTANT: This branch workflow is engineering validation only. The only
+# scheduled prospective evidence chain lives on the default branch in
+# v25-prospective-evidence-ledger.yml and checks out a fixed collector SHA.
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: v25-prospective-future-evidence-engineering-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+  V24B_RUN_ID: "34578494059"
+  V24B_ARTIFACT: "v24b-family-portfolio-34578494059"
+  V25_RANK_RUN_ID: "34590214474"
+  V25_RANK_ARTIFACT: "v25-risk-aware-ranking-34590214474"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "1"
+
+jobs:
+  prospective-collector-engineering:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - name: Checkout exact experiment SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 1
+          clean: true
+          persist-credentials: false
+
+      - name: Verify source provenance
+        run: test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install project and exact frozen-model environment
+        run: |
+          python -m pip install --no-cache-dir -e '.[dev]'
+          python -m pip install --no-cache-dir --upgrade --force-reinstall \
+            'numpy==2.5.3' \
+            'pandas==3.0.5' \
+            'scikit-learn==1.9.1' \
+            'joblib==1.6.0' \
+            'scipy==1.18.1' \
+            'threadpoolctl==3.6.0' \
+            'cloudpickle==3.1.2'
+          python -m pip check
+
+      - name: Download immutable event filters and frozen v0.25 ranker
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf frozen/v24b frozen/v25
+          mkdir -p frozen/v24b frozen/v25
+          gh run download "${V24B_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name "${V24B_ARTIFACT}" --dir frozen/v24b
+          gh run download "${V25_RANK_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name "${V25_RANK_ARTIFACT}" --dir frozen/v25
+          test -f frozen/v24b/family_validation_frozen_champions.joblib
+          test -f frozen/v24b/strategy_event_dataset.csv
+          test -f frozen/v25/ranker_snapshot.joblib
+          test -f frozen/v25/ranker_manifest.json
+          test -f frozen/v25/decision.json
+
+      - name: Validate Colab JSON
+        run: python -m json.tool notebooks/V25_Risk_Aware_Ranking_Forward_Colab.ipynb >/dev/null
+
+      - name: Prospective causality and first-look tests
+        run: |
+          python -m pytest -q \
+            tests/test_future_evidence_v25.py \
+            tests/test_frozen_snapshot_v24d.py \
+            tests/test_risk_ranker_v25.py
+
+      - name: Engineering dry-run of prospective snapshot
+        run: |
+          python scripts/run_v25_future_snapshot.py \
+            --v24b-dir frozen/v24b \
+            --v25-dir frozen/v25 \
+            --output-dir artifacts/v25-prospective-evidence-engineering
+
+      - name: Verify fail-closed decision contract
+        run: |
+          python - <<'PY'
+          import json
+          p = 'artifacts/v25-prospective-evidence-engineering/decision.json'
+          d = json.load(open(p, encoding='utf-8'))
+          assert d.get('forward_paper_authorized') is False, d
+          assert d.get('paper_replacement_authorized') is False, d
+          assert d.get('live_execution_authorized') is False, d
+          PY
+
+      - name: Record engineering provenance
+        if: always()
+        run: |
+          mkdir -p artifacts/v25-prospective-evidence-engineering
+          printf '%s\n' "${EXPECTED_SHA}" > artifacts/v25-prospective-evidence-engineering/source_commit.txt
+          printf '%s\n' "${GITHUB_RUN_ID}" > artifacts/v25-prospective-evidence-engineering/workflow_run_id.txt
+          python -m pip freeze --all > artifacts/v25-prospective-evidence-engineering/pip-freeze.txt
+
+      - name: Upload engineering artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: v25-prospective-engineering-${{ github.run_id }}
+          path: artifacts/v25-prospective-evidence-engineering/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 9
