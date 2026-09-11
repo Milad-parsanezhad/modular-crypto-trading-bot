@@ -30,8 +30,17 @@ def test_sequence_builder_never_uses_future_in_input():
     changed = df.copy(); changed.loc[600:, "close"] *= 7; changed.loc[600:, "high"] *= 7; changed.loc[600:, "low"] *= 7; changed.loc[600:, "open"] *= 7
     b = build_sequences(changed, cfg)
     Xa, _, _, ta, _ = a; Xb, _, _, tb, _ = b
-    common = min(np.searchsorted(ta.astype("int64"), pd.Timestamp(df.timestamp.iloc[599]).value, side="left"), np.searchsorted(tb.astype("int64"), pd.Timestamp(df.timestamp.iloc[599]).value, side="left"))
+    cut_time = pd.Timestamp(df.timestamp.iloc[599])
+    # Compare DatetimeIndex values semantically instead of comparing raw int64
+    # storage. Pandas 2 and Pandas 3 may retain different internal datetime
+    # resolutions (ns/us), so raw integer search can incorrectly include future
+    # samples and create a false causality failure.
+    common_a = int((ta < cut_time).sum())
+    common_b = int((tb < cut_time).sum())
+    common = min(common_a, common_b)
     assert common > 50
+    assert ta[:common].equals(tb[:common])
+    assert (ta[:common] < cut_time).all()
     assert np.allclose(Xa[:common], Xb[:common], equal_nan=True)
 
 
