@@ -10,7 +10,7 @@ This document is the defense-oriented status map for the current MSc research pr
 - no guaranteed-profit claim is authorized
 - a green GitHub Actions run means the frozen experiment executed according to its engineering contract
 - model/strategy promotion requires the scientific gate, not CI success alone
-- previously observed terminal data cannot be re-labeled as fresh untouched evidence after redesign
+- previously observed terminal/external data cannot be re-labeled as fresh untouched evidence after redesign
 
 ## Evidence ladder
 
@@ -23,8 +23,10 @@ This document is the defense-oriented status map for the current MSc research pr
 | v0.23r ML rebuild | TESTED | leakage/provenance/split contracts hardened; prediction layer remains research-only |
 | v0.24 pooled strategy-aware meta-labeling | REJECTED | `NO_META_MODEL_PROMOTED` |
 | v0.24b family-specific meta-labeling | REJECTED | `NO_FAMILY_META_PROMOTION`; filtered portfolio underperformed shadow base and hit DD kill |
-| v0.24c external fresh-evidence route | BLOCKED | exact frozen-model reconstruction differed by one validation selection; external outcome was not read |
-| v0.24c temporal challengers | CHALLENGER | validation-only champions frozen; terminal v0.24b test deliberately not scored |
+| v0.24c external fresh-evidence route | BLOCKED | reconstructed model identity differed by one validation selection; external outcome was not read |
+| v0.24c temporal challengers | CHALLENGER | validation-only TCN/LSTM champions frozen; both exceeded 5% validation DD ceiling |
+| v0.24d exact frozen-snapshot replay | TESTED / REPRODUCIBILITY PASS | exact persisted binaries reproduced 118/47 archived validation selections under the original environment |
+| v0.24d OKX+KuCoin external triangulation | REJECTED | exact event filter improved event-level economics broadly, but portfolio PF/DD/bootstrap gates failed on both venues |
 
 ## v0.24 result summary
 
@@ -81,8 +83,6 @@ Artifact: `v24c-temporal-challenger-34582340510`
 Artifact ID: `10192231684`  
 Artifact digest: `sha256:f5eef115839c5c1cec3419ad4e35fe47ffd4674d099997abdd1278ae022b8cb4`
 
-The run searched `LSTM`, `GRU`, `TCN`, `CNN-LSTM`, and `Transformer` across seeds `314`, `2718`, and `1618`, using development fit and validation-only selection.
-
 Frozen challengers:
 
 ### H4_S6_BREAKOUT
@@ -90,64 +90,94 @@ Frozen challengers:
 - model: `TCN`
 - seed: `2718`
 - threshold: `0.4991191626`
-- validation objective: `2.6366626924`
 - validation selected: `95`
 - validation mean R: `+0.025791R`
 - validation PF: `1.033631`
 - validation total return: `+0.523%`
 - validation MDD: `-11.497%`
 
-This is a **challenger**, not a promotion. The DD is already a material warning and fresh evidence is mandatory.
-
 ### H4_D1_OB_BOS_RISK
 
 - model: `LSTM`
 - seed: `1618`
 - threshold: `0.4864120185`
-- validation objective: `2.7853651507`
 - validation selected: `93`
 - validation mean R: `+0.251931R`
 - validation PF: `1.412762`
 - validation total return: `+5.941%`
 - validation MDD: `-8.584%`
 
-This is also a **challenger**, not a promotion. The v0.24b terminal test was deliberately not scored.
+Neither is promoted; the previously observed v0.24b terminal test was deliberately not scored.
 
-## v0.24c external-validation blocker
+## v0.24c reproducibility blocker
 
-Primary and OKX fallback external routes both stopped before reading an external economic outcome because exact frozen-model reproduction failed:
+Primary and fallback external routes stopped before reading an external economic outcome because model reconstruction from algorithm/seed/threshold produced:
 
 `FROZEN_THRESHOLD_REPRODUCTION_MISMATCH H4_D1_OB_BOS_RISK: got=46 expected=47`
 
-This one-event difference is treated as a reproducibility defect. It is not rounded away and is not used as a reason to retune the model.
+Instead of relaxing the threshold, v0.24d switched scientific model identity to the exact persisted binary artifact.
 
-A separate important reproducibility observation is that the v0.24b serialized champion bundle was created under:
+## v0.24d exact-replay + external result
 
-- `scikit-learn==1.9.1`
-- `numpy==2.5.3`
-- `pandas==3.0.5`
-- `joblib==1.6.0`
+Workflow: `34585325516` — SUCCESS  
+Artifact: `v24d-frozen-snapshot-external-34585325516`  
+Artifact ID: `10193425439`  
+Artifact digest: `sha256:e75423d67476172c78b24c03b5a253257fa0a76b94996fc0557e4d2b85fc8acb`
 
-The frozen model artifact file `family_validation_frozen_champions.joblib` has SHA-256:
+### Exact archived replay
 
-`ec4a81b7d708b0ffc7a80238668fa1bb34cccdac0408c51e4aff082075a5a22a`
+- S6: `118/236` selected — exact PASS
+- D1-OB: `47/185` selected — exact PASS
 
-The next scientific route must consume this exact serialized snapshot under an environment compatible with its persisted estimator state instead of recreating the winner from model name/seed alone.
+This resolves the v0.24c 46-vs-47 reproducibility blocker without refit or threshold retuning.
+
+### OKX
+
+- 1,868 external events / 638 frozen-selected
+- event-level 24 bps PF `1.1817`, mean `+0.1220R`
+- 36 bps PF `1.1306`; 60 bps PF `1.0370`
+- symbol uplift breadth `10/11`
+- MTM-filtered portfolio: 165 accepted, return `-0.861%`, PF `0.9621`
+- max intrabar-stress DD `-5.335%`
+- block-uplift CI lower bound below zero
+- hard MTM kill triggered
+
+### KuCoin
+
+- 1,869 external events / 641 frozen-selected
+- event-level 24 bps PF `1.1975`, mean `+0.1327R`
+- 36 bps PF `1.1447`; 60 bps PF `1.0481`
+- symbol uplift breadth `9/11`
+- MTM-filtered portfolio: 156 accepted, return `+0.315%`, PF `1.0147`
+- max intrabar-stress DD `-5.703%`
+- block-uplift CI lower bound below zero
+- hard MTM kill triggered
+
+Both venues failed the frozen portfolio PF, MTM-DD and paired-bootstrap gates. Decision: **`EXTERNAL_REPLICATION_FAILED`**.
+
+## New Plan-D discovery
+
+The v0.24d result exposes a new architectural distinction:
+
+> **event alpha / abstention and portfolio admission/arbitration are not the same problem.**
+
+The frozen model improved event-level economics broadly on both venues, yet the overlap-aware portfolio did not preserve that edge. The current allocator uses the model score as a binary gate but, when simultaneous selected events compete for scarce risk budget, deterministic ordering is `entry_time → strategy → symbol` rather than economic priority. Portfolio/risk caps and the 5% kill therefore choose/truncate a subset that can differ materially from the broad positive event population.
+
+This is a post-outcome diagnostic discovery, not a rescue of v0.24d. The OKX/KuCoin 2025–2026 sample is now development/diagnostic evidence for the redesigned hypothesis and cannot be called untouched again.
 
 ## Next evidence gate
 
-The next stage is pre-registered as:
+Plan D now requires a **new portfolio-arbitration research cycle**. Before implementation, the next design is being grounded in current literature on:
 
-1. recover the exact v0.24b frozen serialized model artifact by immutable run/artifact identity and verify its SHA-256;
-2. load it under the frozen dependency environment;
-3. verify feature schema and frozen thresholds without refit;
-4. evaluate on a disjoint external cross-sectional universe or genuinely future-time bars;
-5. run mark-to-market portfolio simulation with correlation/CVaR/open-risk controls;
-6. run 24/36/60 bps cost stress;
-7. evaluate paired block-bootstrap uplift, breadth and sample sufficiency;
-8. run CPCV/PBO/DSR/search-aware audit before any PAPER promotion;
-9. keep LIVE fail-closed.
+- learning-to-rank for portfolio selection;
+- conformal / uncertainty-aware abstention;
+- survival analysis for trading-signal duration;
+- score-to-net-R calibration;
+- CVaR/correlation-aware marginal risk utility;
+- RL only after simpler deterministic/ML allocator baselines survive fresh evidence.
+
+The redesigned allocator must then be frozen and evaluated on genuinely future-time evidence. No same-sample retuning or promotion is allowed.
 
 ## Defense interpretation
 
-The scientifically important contribution is not that every increasingly complex model becomes profitable. The defensible contribution is a reproducible pipeline that detects leakage, overfitting, cost fragility, regime dependence, portfolio-risk failure and reproducibility defects before allowing promotion.
+The strongest contribution is not that increasing model complexity always produces higher returns. The defensible contribution is a falsifiable, reproducible architecture that distinguishes prediction from portfolio economics and stops promotion when external portfolio evidence contradicts encouraging event-level metrics.
