@@ -10,8 +10,13 @@ earlier trade's outcome before the earlier trade has actually exited.
 
 v0.23 separates *entry decisions* from *exit settlements*. At a candidate
 entry timestamp, only positions with an exit timestamp strictly earlier than
-the new entry are settled. Exits sharing the same timestamp are settled as a
-batch, avoiding artificial within-bar ordering of portfolio equity.
+the new entry are settled. Exits sharing the same timestamp are settled as one
+batch, avoiding artificial intrabar ordering.
+
+Position P&L is fixed in cash at entry: ``entry_equity * risk_fraction * R``.
+This matters for overlapping positions. Re-applying a trade return percentage
+to whatever equity happens to exist at exit would silently resize an already
+open position and is therefore not valid event-driven portfolio accounting.
 
 The module is research/PAPER-only. It does not authorize live execution.
 """
@@ -27,6 +32,8 @@ from research_bot.multitimeframe_strategies_v20 import COOLDOWN, RiskPsychologyP
 
 
 INTRADAY_TIMEFRAMES = {"1m", "5m", "15m", "1h"}
+PendingEvent = tuple[pd.Timestamp, int, int, float, float]
+# (exit_time, sequence, row_index, pnl_cash, account_return_at_entry)
 
 
 def _timeframe_from_spec(spec: Any) -> str:
@@ -38,7 +45,7 @@ def _timeframe_from_spec(spec: Any) -> str:
 
 def _settle_batches_before(
     x: pd.DataFrame,
-    pending: list[tuple[pd.Timestamp, int, int, float]],
+    pending: list[PendingEvent],
     *,
     cutoff: pd.Timestamp | None,
     equity: float,
@@ -48,7 +55,7 @@ def _settle_batches_before(
     hard_killed: bool,
     timeframe: str,
     policy: RiskPsychologyPolicy,
-) -> tuple[list[tuple[pd.Timestamp, int, int, float]], float, float, int, pd.Timestamp | None, bool]:
+) -> tuple[list[PendingEvent], float, float, int, pd.Timestamp | None, bool]:
     """Settle exits before ``cutoff``; ``None`` settles every remaining exit.
 
     Strict ``exit_time < entry_time`` ordering is intentional. In the bracket
@@ -59,7 +66,7 @@ def _settle_batches_before(
 
     if cutoff is None:
         due = pending
-        remaining: list[tuple[pd.Timestamp, int, int, float]] = []
+        remaining: list[PendingEvent] = []
     else:
         due = [event for event in pending if event[0] < cutoff]
         remaining = [event for event in pending if event[0] >= cutoff]
@@ -71,32 +78,35 @@ def _settle_batches_before(
     cursor = 0
     while cursor < len(due):
         exit_time = due[cursor][0]
-        batch: list[tuple[pd.Timestamp, int, int, float]] = []
+        batch: list[PendingEvent] = []
         while cursor < len(due) and due[cursor][0] == exit_time:
             batch.append(due[cursor])
             cursor += 1
 
-        returns = np.asarray([event[3] for event in batch], dtype=float)
-        if np.any(~np.isfinite(returns)):
-            raise ValueError("pending settlement contains a non-finite account return")
-        if np.any(returns <= -1.0):
-            raise ValueError("account return <= -100% is invalid for multiplicative equity accounting")
+        pnl = np.asarray([event[3] for event in batch], dtype=float)
+        entry_normalized_returns = np.asarray([event[4] for event in batch], dtype=float)
+        if np.any(~np.isfinite(pnl)) or np.any(~np.isfinite(entry_normalized_returns)):
+            raise ValueError("pending settlement contains a non-finite value")
 
-        # Same-timestamp exits form one portfolio settlement batch. Multiplying
-        # factors is order-invariant and avoids inventing intrabar path/peaks.
-        equity *= float(np.prod(1.0 + returns))
+        equity_before = float(equity)
+        batch_pnl = float(pnl.sum())
+        equity = float(equity_before + batch_pnl)
+        batch_return = float(batch_pnl / equity_before) if equity_before != 0 else np.nan
         peak = max(peak, equity)
-        dd_after = equity / peak - 1.0
+        dd_after = float(equity / peak - 1.0) if peak > 0 else -np.inf
 
-        for _, _, row_i, _ in batch:
+        for _, _, row_i, _, _ in batch:
+            x.at[row_i, "settlement_equity_before_v23"] = equity_before
+            x.at[row_i, "settlement_batch_pnl_v23"] = batch_pnl
+            x.at[row_i, "settlement_batch_return_v23"] = batch_return
             x.at[row_i, "settlement_equity_v23"] = equity
             x.at[row_i, "settlement_drawdown_v23"] = dd_after
             x.at[row_i, "settlement_batch_size_v23"] = len(batch)
 
-        positive = int(np.sum(returns > 0.0))
-        losses = int(np.sum(returns < 0.0))
-        # Exact sequencing within one bar is unknown. A batch containing a win
-        # breaks the loss streak; an all-loss batch accumulates its losses.
+        positive = int(np.sum(entry_normalized_returns > 0.0))
+        losses = int(np.sum(entry_normalized_returns < 0.0))
+        # Exact sequencing inside one bar is unknown. A batch containing any
+        # win breaks the loss streak; an all-loss batch accumulates its losses.
         if positive:
             streak = 0
         elif losses:
@@ -106,7 +116,7 @@ def _settle_batches_before(
                 cooldown = candidate if cooldown is None else max(cooldown, candidate)
                 streak = 0
 
-        if dd_after <= -policy.hard_drawdown_kill:
+        if not np.isfinite(equity) or equity <= 0 or dd_after <= -policy.hard_drawdown_kill:
             hard_killed = True
 
     return remaining, equity, peak, streak, cooldown, hard_killed
@@ -117,12 +127,11 @@ def apply_causal_risk_overlay_v23(
     spec: Any,
     policy: RiskPsychologyPolicy | None = None,
 ) -> pd.DataFrame:
-    """Apply risk governance without allowing future trade outcomes into entries.
+    """Apply risk governance without allowing future outcomes into entries.
 
-    The function is intentionally versioned instead of replacing v0.20 so all
-    previously generated thesis evidence remains reproducible.  The output
-    keeps raw ``r_multiple`` untouched and writes v0.23-specific accounting
-    columns.
+    The function is versioned instead of replacing v0.20 so previously
+    generated thesis evidence remains reproducible. Raw ``r_multiple`` remains
+    untouched; all new accounting fields use the ``_v23`` suffix.
     """
 
     p = policy or RiskPsychologyPolicy()
@@ -147,10 +156,14 @@ def apply_causal_risk_overlay_v23(
         "risk_scale_drawdown_v23": 0.0,
         "risk_fraction_v23": 0.0,
         "account_return_v23": 0.0,
+        "pnl_cash_v23": 0.0,
         "equity_at_entry_v23": np.nan,
         "drawdown_before_v23": np.nan,
         "loss_streak_before_v23": 0,
         "open_positions_before_v23": 0,
+        "settlement_equity_before_v23": np.nan,
+        "settlement_batch_pnl_v23": np.nan,
+        "settlement_batch_return_v23": np.nan,
         "settlement_equity_v23": np.nan,
         "settlement_drawdown_v23": np.nan,
         "settlement_batch_size_v23": 0,
@@ -164,7 +177,7 @@ def apply_causal_risk_overlay_v23(
     cooldown: pd.Timestamp | None = None
     hard_killed = False
     day_counts: dict[tuple[str, object], int] = {}
-    pending: list[tuple[pd.Timestamp, int, int, float]] = []
+    pending: list[PendingEvent] = []
     sequence = 0
 
     for row_i, row in x.iterrows():
@@ -182,7 +195,7 @@ def apply_causal_risk_overlay_v23(
             policy=p,
         )
 
-        dd = equity / peak - 1.0
+        dd = float(equity / peak - 1.0) if peak > 0 else -np.inf
         x.at[row_i, "equity_at_entry_v23"] = equity
         x.at[row_i, "drawdown_before_v23"] = dd
         x.at[row_i, "loss_streak_before_v23"] = streak
@@ -190,7 +203,7 @@ def apply_causal_risk_overlay_v23(
 
         key = (str(row["symbol"]), entry_time.date())
         reason = ""
-        if hard_killed or dd <= -p.hard_drawdown_kill:
+        if hard_killed or not np.isfinite(equity) or equity <= 0 or dd <= -p.hard_drawdown_kill:
             hard_killed = True
             reason = "HARD_DRAWDOWN_KILL"
         elif cooldown is not None and entry_time < cooldown:
@@ -209,18 +222,22 @@ def apply_causal_risk_overlay_v23(
         vol_raw = 1.0 if pd.isna(vol_raw) else float(vol_raw)
         vol_scale = float(np.clip(vol_raw, p.vol_floor_scale, 1.0))
         risk = min(p.max_risk_per_trade, p.base_risk_per_trade * dd_scale * vol_scale)
-        account_return = risk * float(row["r_multiple"])
+        account_return = float(risk * float(row["r_multiple"]))
         if not np.isfinite(account_return):
             raise ValueError("non-finite account return produced by risk overlay")
         if account_return <= -1.0:
-            raise ValueError("account return <= -100% is invalid for multiplicative equity accounting")
+            raise ValueError("single-position entry-normalized loss <= -100% is invalid")
 
+        # Position size is fixed at entry.  Store absolute normalized cash P&L
+        # (initial portfolio equity = 1.0) so later settlements cannot resize it.
+        pnl_cash = float(equity * account_return)
         x.at[row_i, "executed_v23"] = True
         x.at[row_i, "risk_scale_drawdown_v23"] = dd_scale
         x.at[row_i, "risk_fraction_v23"] = risk
         x.at[row_i, "account_return_v23"] = account_return
+        x.at[row_i, "pnl_cash_v23"] = pnl_cash
         day_counts[key] = day_counts.get(key, 0) + 1
-        pending.append((row["exit_time"], sequence, row_i, account_return))
+        pending.append((row["exit_time"], sequence, row_i, pnl_cash, account_return))
         sequence += 1
 
     pending, equity, peak, streak, cooldown, hard_killed = _settle_batches_before(
@@ -240,11 +257,13 @@ def apply_causal_risk_overlay_v23(
 
     x.attrs["v23_risk_audit"] = {
         "final_realized_equity": float(equity),
-        "final_realized_drawdown": float(equity / peak - 1.0),
+        "final_realized_return": float(equity - 1.0),
+        "final_realized_drawdown": float(equity / peak - 1.0) if peak > 0 else -np.inf,
         "hard_killed": bool(hard_killed),
         "policy": asdict(p),
         "timeframe": timeframe,
         "causality_contract": "entry sees settlements with exit_time strictly earlier than entry_time only",
+        "position_sizing_contract": "cash PnL fixed from realized equity at entry; settlement never resizes an open position",
         "live_execution_authorized": False,
     }
     return x
