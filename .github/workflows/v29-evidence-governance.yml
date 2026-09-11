@@ -1,0 +1,113 @@
+name: v29-evidence-governance
+
+on:
+  push:
+    branches:
+      - "research/v29-evidence-governance"
+    paths:
+      - "research_bot/evidence_governance_v29.py"
+      - "scripts/run_v29_evidence_governance.py"
+      - "tests/test_evidence_governance_v29.py"
+      - ".github/workflows/v29-evidence-governance.yml"
+  workflow_dispatch:
+    inputs:
+      v27_run_id:
+        description: "Completed v0.27 run containing v27-cross-venue-robustness artifact"
+        required: true
+        type: string
+      v27_commit_sha:
+        description: "Frozen v0.27 commit SHA"
+        required: true
+        type: string
+      v28_run_id:
+        description: "Optional completed v0.28 run containing v28-fresh-temporal-oos artifact"
+        required: false
+        type: string
+      v28_commit_sha:
+        description: "Optional frozen v0.28 commit SHA"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  governance-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install research package
+        run: python -m pip install -e '.[dev]'
+      - name: Verify v0.29 governance invariants
+        run: >-
+          python -m pytest -q
+          tests/test_cross_venue_robustness_v27.py
+          tests/test_fresh_temporal_oos_v28.py
+          tests/test_evidence_governance_v29.py
+
+  build-evidence-bundle:
+    if: github.event_name == 'workflow_dispatch'
+    needs: governance-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install research package
+        run: python -m pip install -e '.[dev]'
+      - name: Download frozen v0.27 evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: v27-cross-venue-robustness
+          path: frozen-v27
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.v27_run_id }}
+      - name: Download optional v0.28 evidence
+        if: inputs.v28_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: v28-fresh-temporal-oos
+          path: frozen-v28
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.v28_run_id }}
+      - name: Build cryptographic evidence bundle
+        env:
+          V27_RUN_ID: ${{ inputs.v27_run_id }}
+          V27_COMMIT_SHA: ${{ inputs.v27_commit_sha }}
+          V28_RUN_ID: ${{ inputs.v28_run_id }}
+          V28_COMMIT_SHA: ${{ inputs.v28_commit_sha }}
+        run: |
+          args=(
+            --v27-artifact-dir frozen-v27
+            --v27-run-id "$V27_RUN_ID"
+            --v27-commit-sha "$V27_COMMIT_SHA"
+            --output-dir artifacts/v29-evidence-governance
+          )
+          if [ -n "$V28_RUN_ID" ]; then
+            args+=(--v28-artifact-dir frozen-v28 --v28-run-id "$V28_RUN_ID")
+            if [ -n "$V28_COMMIT_SHA" ]; then
+              args+=(--v28-commit-sha "$V28_COMMIT_SHA")
+            fi
+          fi
+          python scripts/run_v29_evidence_governance.py "${args[@]}"
+      - name: Print promotion and claim policy
+        run: |
+          cat artifacts/v29-evidence-governance/promotion_state_v29.json
+          cat artifacts/v29-evidence-governance/claim_policy_v29.json
+      - name: Upload v0.29 thesis evidence bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: v29-evidence-governance
+          path: artifacts/v29-evidence-governance
+          retention-days: 90
