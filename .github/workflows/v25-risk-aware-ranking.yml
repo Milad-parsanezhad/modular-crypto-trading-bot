@@ -1,0 +1,133 @@
+name: v25-risk-aware-ranking
+
+on:
+  push:
+    branches: [research/v25-risk-aware-ranking-forward]
+    paths:
+      - "research_bot/risk_ranker_v25.py"
+      - "research_bot/portfolio_ranked_v25.py"
+      - "scripts/run_v25_risk_aware_ranking.py"
+      - "tests/test_risk_ranker_v25.py"
+      - "docs/V25_RISK_AWARE_RANKING_FORWARD_PROTOCOL.md"
+      - "notebooks/V25_Risk_Aware_Ranking_Forward_Colab.ipynb"
+      - ".github/workflows/v25-risk-aware-ranking.yml"
+  pull_request:
+    paths:
+      - "research_bot/risk_ranker_v25.py"
+      - "research_bot/portfolio_ranked_v25.py"
+      - "scripts/run_v25_risk_aware_ranking.py"
+      - "tests/test_risk_ranker_v25.py"
+      - "docs/V25_RISK_AWARE_RANKING_FORWARD_PROTOCOL.md"
+      - "notebooks/V25_Risk_Aware_Ranking_Forward_Colab.ipynb"
+      - ".github/workflows/v25-risk-aware-ranking.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+  V24B_RUN_ID: "34578494059"
+  V24B_ARTIFACT: "v24b-family-portfolio-34578494059"
+  V24D_RUN_ID: "34585325516"
+  V24D_ARTIFACT: "v24d-frozen-snapshot-external-34585325516"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "1"
+
+jobs:
+  ranker-integrity-and-freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout exact experiment SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 1
+          clean: true
+          persist-credentials: false
+
+      - name: Verify source provenance
+        run: test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install project and exact frozen-model environment
+        run: |
+          python -m pip install --no-cache-dir -e '.[dev]'
+          python -m pip install --no-cache-dir --upgrade --force-reinstall \
+            'numpy==2.5.3' \
+            'pandas==3.0.5' \
+            'scikit-learn==1.9.1' \
+            'joblib==1.6.0' \
+            'scipy==1.18.1' \
+            'threadpoolctl==3.6.0' \
+            'cloudpickle==3.1.2'
+          python -m pip check
+
+      - name: Download immutable v0.24b and spent v0.24d evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf frozen/v24b frozen/v24d
+          mkdir -p frozen/v24b frozen/v24d
+          gh run download "${V24B_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name "${V24B_ARTIFACT}" --dir frozen/v24b
+          gh run download "${V24D_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name "${V24D_ARTIFACT}" --dir frozen/v24d
+          test -f frozen/v24b/family_validation_frozen_champions.joblib
+          test -f frozen/v24b/strategy_event_dataset.csv
+          test -f frozen/v24d/decision.json
+          test -f frozen/v24d/okx/external_scored_events_full.csv
+          test -f frozen/v24d/kucoin/external_scored_events_full.csv
+
+      - name: Validate Colab JSON
+        run: python -m json.tool notebooks/V25_Risk_Aware_Ranking_Forward_Colab.ipynb >/dev/null
+
+      - name: Causality and allocator regression tests
+        run: |
+          pytest -q \
+            tests/test_frozen_snapshot_v24d.py \
+            tests/test_v24c_external_mtm_temporal.py \
+            tests/test_risk_ranker_v25.py
+
+      - name: Freeze validation-only v0.25 ranking challenger
+        run: |
+          python scripts/run_v25_risk_aware_ranking.py \
+            --v24b-dir frozen/v24b \
+            --v24d-dir frozen/v24d \
+            --output-dir artifacts/v25-risk-aware-ranking
+
+      - name: Verify fail-closed decision contract
+        run: |
+          python - <<'PY'
+          import json
+          p='artifacts/v25-risk-aware-ranking/decision.json'
+          d=json.load(open(p))
+          assert d['state']=='RANKER_FROZEN_FOR_FUTURE_TIME_RESEARCH', d
+          assert d['scientific_label']=='CHALLENGER_NOT_PROMOTED', d
+          assert d['promotion_evidence_consumed'] is False, d
+          assert d['forward_paper_authorized'] is False, d
+          assert d['paper_replacement_authorized'] is False, d
+          assert d['live_execution_authorized'] is False, d
+          PY
+
+      - name: Record defense-grade provenance
+        if: always()
+        run: |
+          mkdir -p artifacts/v25-risk-aware-ranking
+          printf '%s\n' "${EXPECTED_SHA}" > artifacts/v25-risk-aware-ranking/source_commit.txt
+          printf '%s\n' "${V24B_RUN_ID}" > artifacts/v25-risk-aware-ranking/frozen_v24b_source_run.txt
+          printf '%s\n' "${V24D_RUN_ID}" > artifacts/v25-risk-aware-ranking/spent_v24d_source_run.txt
+          python -m pip freeze --all > artifacts/v25-risk-aware-ranking/pip-freeze.txt
+
+      - name: Upload v0.25 ranking evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: v25-risk-aware-ranking-${{ github.run_id }}
+          path: artifacts/v25-risk-aware-ranking/
+          if-no-files-found: error
+          retention-days: 30
