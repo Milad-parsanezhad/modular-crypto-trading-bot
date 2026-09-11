@@ -1,0 +1,58 @@
+name: Bug / reproducibility defect
+description: Report a code, data, timestamp, dependency, CI or experiment-reproduction problem.
+title: "bug: "
+labels: []
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Problem
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Exact command, workflow/run ID, source commit and smallest reproducible input.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Python, OS, dependency versions and relevant exchange/data provider. Never include secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence / logs
+      description: Error excerpt, artifact ID/digest, dataset hash or failing assertion. Redact credentials.
+    validations:
+      required: true
+  - type: dropdown
+    id: class
+    attributes:
+      label: Suspected defect class
+      options:
+        - Data / timestamp / timezone
+        - Look-ahead / leakage
+        - Split / purge / embargo
+        - Model persistence / dependency drift
+        - Cost / execution semantics
+        - Portfolio risk / MTM
+        - Exchange/provider transport
+        - CI / artifact provenance
+        - Documentation / defense evidence
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: No password, API key, token, wallet secret or private credential is included.
+          required: true
