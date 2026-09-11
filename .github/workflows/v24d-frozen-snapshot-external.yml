@@ -8,6 +8,7 @@ on:
       - "scripts/run_v24d_frozen_snapshot_external.py"
       - "tests/test_frozen_snapshot_v24d.py"
       - "docs/V24D_FROZEN_SNAPSHOT_EXTERNAL_PROTOCOL.md"
+      - "notebooks/V24D_Frozen_Snapshot_External_Colab.ipynb"
       - ".github/workflows/v24d-frozen-snapshot-external.yml"
   pull_request:
     paths:
@@ -15,6 +16,7 @@ on:
       - "scripts/run_v24d_frozen_snapshot_external.py"
       - "tests/test_frozen_snapshot_v24d.py"
       - "docs/V24D_FROZEN_SNAPSHOT_EXTERNAL_PROTOCOL.md"
+      - "notebooks/V24D_Frozen_Snapshot_External_Colab.ipynb"
       - ".github/workflows/v24d-frozen-snapshot-external.yml"
   workflow_dispatch:
 
@@ -69,9 +71,8 @@ jobs:
         run: |
           rm -rf frozen/v24b
           mkdir -p frozen/v24b
-          # GitHub's documented CLI path is used deliberately instead of relying
-          # on a current-run artifact. This preserves cross-run identity and also
-          # avoids coupling the scientific gate to one artifact-action transport.
+          # Use GitHub's documented cross-run CLI route. Scientific identity is
+          # established by the subsequent file SHA-256 checks, not by transport.
           gh run download "${SOURCE_RUN_ID}" \
             --repo "${GITHUB_REPOSITORY}" \
             --name "${SOURCE_ARTIFACT}" \
@@ -80,6 +81,9 @@ jobs:
           test -f frozen/v24b/strategy_event_dataset.csv
           test -f frozen/v24b/family_validation_leaderboard.csv
           test -f frozen/v24b/decision.json
+
+      - name: Validate defense Colab JSON
+        run: python -m json.tool notebooks/V24D_Frozen_Snapshot_External_Colab.ipynb >/dev/null
 
       - name: Unit integrity guards
         run: pytest -q tests/test_frozen_snapshot_v24d.py tests/test_v24c_external_mtm_temporal.py tests/test_strategy_family_meta_v24b.py
