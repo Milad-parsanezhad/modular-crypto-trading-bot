@@ -25,6 +25,7 @@ For repository acquisition and branch preparation:
 7. A dirty existing checkout is never hard-reset or overwritten by the recovery tool.
 8. A failed clone's entire partial destination is removed before fallback because stale `.git` state or worktree files can corrupt recovery. This cleanup is permitted only because that destination was created by the failed clone in the same call; pre-existing non-repository user directories are never deleted.
 9. An optional immutable `expected_commit` can be supplied. A checkout is `READY` only when `git rev-parse HEAD` exactly equals that SHA.
+10. A fallback checkout is accepted only when both HEAD and the recovered branch identity are exact. Identity checks are never softened with `|| true`.
 
 ## Preferred decision tree
 
@@ -42,7 +43,7 @@ Attempt one shallow single-branch clone. If it fails or times out, immediately c
 
 ### Fallback method
 
-Delete only the partial checkout created by the failed clone, initialize an empty repository, add origin, shallow-fetch exactly `refs/heads/<branch>`, check out that ref, then verify the immutable expected SHA when provided.
+Delete only the partial checkout created by the failed clone, initialize an empty repository, add origin, shallow-fetch exactly `refs/heads/<branch>`, prove that ref resolves to the expected immutable SHA, check out that ref, and verify both HEAD and branch identity.
 
 ### Remote branch missing or remote unreachable
 
@@ -67,18 +68,36 @@ python scripts/research_branch_bootstrap.py \
 
 ## CI behavior
 
-`.github/workflows/v23r-repo-recovery-guard.yml` now implements all of the following:
+`.github/workflows/v23r-repo-recovery-guard.yml` implements all of the following:
 
 - checks out the immutable PR-head/push SHA rather than GitHub's synthetic pull-request merge ref;
 - gives the primary checkout one minute and immediately changes method if it fails or resolves the wrong SHA;
 - wipes the complete ephemeral partial workspace before fallback so stale worktree state cannot leak into recovery;
 - fetches the exact research branch ref and proves it resolves to the event SHA;
+- records whether recovery used `primary_exact_sha` or `fallback_exact_ref`;
+- requires the fallback branch name itself to match the expected research ref;
 - records checkout provenance as an artifact;
 - runs the local recovery unit suite;
-- performs a forced-failure integration test by intercepting exactly the direct `git clone`, making it fail, and proving that the independent `git init + fetch + checkout` fallback recovers the correct SHA and file content;
-- uses current Node-24-generation GitHub actions and disables the multi-gigabyte shared pip cache for this lightweight guard.
+- performs a forced-failure integration test by intercepting exactly the direct `git clone`, creating stale partial state, making clone fail, and proving that the independent `git init + fetch + checkout` fallback removes the stale state and recovers the correct SHA, branch and file content;
+- pins critical GitHub Actions in the recovery guard to immutable commit SHAs corresponding to current Node-24-generation releases;
+- disables the multi-gigabyte shared pip cache for this lightweight guard.
 
 A normal successful primary checkout does not exercise fallback, so the forced-failure integration test is mandatory evidence that the recovery path itself works.
+
+## Research CI hardening
+
+The active ML/vision workflows now follow a common fail-closed contract:
+
+- immutable event SHA checkout plus `git rev-parse HEAD` verification;
+- read-only repository permissions;
+- concurrency cancellation of superseded runs;
+- no shared multi-gigabyte pip cache;
+- isolated dependency installation plus `pip check`;
+- upstream localization/multimodal/temporal integrity before real-data ML;
+- broad internal multi-asset panel before any external replication;
+- external venue evaluation only for an internally eligible candidate, with no refit or threshold tuning on the external venue;
+- final evidence gate that accepts a skipped external run only when no internal candidate existed;
+- forward-paper and live execution remain fail-closed.
 
 ## General research automation rule
 
