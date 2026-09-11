@@ -1,0 +1,69 @@
+name: Research hypothesis / experiment
+description: Propose a falsifiable research question before inspecting the final evidence.
+title: "research: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to pre-register a research hypothesis. Keep validation/test evidence untouched until the selection rule is frozen.
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Hypothesis
+      description: State a falsifiable claim and why it may add information beyond the current baseline.
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Prior research / comparable implementations
+      description: Papers, official documentation, repositories, known bugs or failure modes reviewed before implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: data
+    attributes:
+      label: Data and point-in-time contract
+      description: Source, frequency, availability timestamp, universe, data-quality filters and known missing fields.
+    validations:
+      required: true
+  - type: textarea
+    id: split
+    attributes:
+      label: Development / validation / test design
+      description: Include purging/embargo, label horizon and whether any terminal evidence has already been observed.
+    validations:
+      required: true
+  - type: textarea
+    id: baseline
+    attributes:
+      label: Baseline and ablation
+      description: What simpler model/strategy must the hypothesis beat?
+    validations:
+      required: true
+  - type: textarea
+    id: economics
+    attributes:
+      label: Costs and portfolio-risk assumptions
+      description: Fees, slippage, funding, risk/trade, overlap, correlation, CVaR and DD gate.
+    validations:
+      required: true
+  - type: textarea
+    id: gate
+    attributes:
+      label: Pre-registered acceptance / rejection gate
+      description: Sample size, PF/expectancy, drawdown, breadth, bootstrap, PBO/DSR/CPCV and stress requirements as applicable.
+    validations:
+      required: true
+  - type: checkboxes
+    id: integrity
+    attributes:
+      label: Integrity contract
+      options:
+        - label: Final/test outcomes will not be used to retune the same experiment.
+          required: true
+        - label: Negative results will be preserved.
+          required: true
+        - label: LIVE execution remains fail-closed.
+          required: true
