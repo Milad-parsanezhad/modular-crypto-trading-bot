@@ -7,6 +7,7 @@ on:
       - "research_bot/repo_recovery.py"
       - "scripts/research_branch_bootstrap.py"
       - "tests/test_repo_recovery.py"
+      - "tests/test_workflow_hardening_v23r.py"
       - "docs/RESEARCH_BRANCH_RECOVERY_PROTOCOL.md"
       - ".github/workflows/v23r-repo-recovery-guard.yml"
   pull_request:
@@ -14,6 +15,7 @@ on:
       - "research_bot/repo_recovery.py"
       - "scripts/research_branch_bootstrap.py"
       - "tests/test_repo_recovery.py"
+      - "tests/test_workflow_hardening_v23r.py"
       - "docs/RESEARCH_BRANCH_RECOVERY_PROTOCOL.md"
       - ".github/workflows/v23r-repo-recovery-guard.yml"
   workflow_dispatch:
@@ -38,7 +40,7 @@ jobs:
     steps:
       - name: Primary exact-SHA checkout, one-minute circuit breaker
         id: primary_checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         continue-on-error: true
         timeout-minutes: 1
         with:
@@ -57,6 +59,7 @@ jobs:
           echo "expected=${EXPECTED_SHA}"
           echo "actual=${actual}"
           test "${actual}" = "${EXPECTED_SHA}"
+          echo "RECOVERY_MODE=primary_exact_sha" >> "${GITHUB_ENV}"
 
       - name: Fallback exact-ref checkout after primary failure or identity mismatch
         if: steps.primary_checkout.outcome != 'success' || steps.primary_identity.outcome != 'success'
@@ -67,7 +70,7 @@ jobs:
           set -euo pipefail
           echo "Primary checkout failed or resolved the wrong SHA; switching method immediately."
           # Ephemeral runner only: remove the entire partial workspace, including
-          # stale .git state or files left by an interrupted checkout.
+          # stale .git state and files left by an interrupted checkout.
           find "${GITHUB_WORKSPACE}" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
           cd "${GITHUB_WORKSPACE}"
           git init
@@ -77,6 +80,7 @@ jobs:
           remote_sha="$(git rev-parse "refs/remotes/origin/${EXPECTED_REF}")"
           test "${remote_sha}" = "${EXPECTED_SHA}"
           git checkout -B "${EXPECTED_REF}" "refs/remotes/origin/${EXPECTED_REF}"
+          echo "RECOVERY_MODE=fallback_exact_ref" >> "${GITHUB_ENV}"
 
       - name: Verify recovered repository provenance
         run: |
@@ -84,8 +88,9 @@ jobs:
           actual="$(git rev-parse HEAD)"
           branch="$(git branch --show-current)"
           test "${actual}" = "${EXPECTED_SHA}"
-          if [ -n "${EXPECTED_REF}" ] && [ -n "${branch}" ]; then
-            test "${branch}" = "${EXPECTED_REF}" || true
+          if [ "${RECOVERY_MODE:-}" = "fallback_exact_ref" ]; then
+            test -n "${EXPECTED_REF}"
+            test "${branch}" = "${EXPECTED_REF}"
           fi
           mkdir -p artifacts/recovery
           python - <<'PY'
@@ -95,13 +100,16 @@ jobs:
               "actual_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
               "expected_ref": os.environ["EXPECTED_REF"],
               "actual_branch": subprocess.check_output(["git", "branch", "--show-current"], text=True).strip(),
+              "recovery_mode": os.environ.get("RECOVERY_MODE"),
               "status": "EXACT_SHA_VERIFIED",
           }
           assert payload["actual_sha"] == payload["expected_sha"]
+          if payload["recovery_mode"] == "fallback_exact_ref":
+              assert payload["actual_branch"] == payload["expected_ref"]
           open("artifacts/recovery/current-checkout.json", "w", encoding="utf-8").write(json.dumps(payload, indent=2))
           PY
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
@@ -112,12 +120,13 @@ jobs:
         run: python -m pip check
 
       - name: Unit-test branch recovery and anti-loop behavior
-        run: pytest -q tests/test_repo_recovery.py
+        run: pytest -q tests/test_repo_recovery.py tests/test_workflow_hardening_v23r.py
 
       - name: Force direct-clone failure and prove the fallback path end-to-end
         run: |
           set -euo pipefail
           root="$(mktemp -d)"
+          trap 'rm -rf "${root}"' EXIT
           mkdir -p "${root}/src" "${root}/git-wrapper"
           git -C "${root}/src" init
           git -C "${root}/src" config user.email "ci-recovery@example.invalid"
@@ -136,6 +145,9 @@ jobs:
           cat > "${root}/git-wrapper/git" <<'SH'
           #!/usr/bin/env bash
           if [ "${1:-}" = "clone" ]; then
+            dest="${@: -1}"
+            mkdir -p "${dest}"
+            printf 'stale-from-failed-clone\n' > "${dest}/STALE_PARTIAL_FILE"
             echo "forced direct-clone failure for fallback integration test" >&2
             exit 97
           fi
@@ -155,12 +167,18 @@ jobs:
 
           python - "${root}/fallback-result.json" "${root}/fallback-audit.jsonl" "${root}/recovered" "${expected}" <<'PY'
           import json, pathlib, subprocess, sys
-          result_path, audit_path, checkout, expected = map(pathlib.Path, sys.argv[1:4]) + [sys.argv[4]] if False else (pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3]), sys.argv[4])
+          result_path = pathlib.Path(sys.argv[1])
+          audit_path = pathlib.Path(sys.argv[2])
+          checkout = pathlib.Path(sys.argv[3])
+          expected = sys.argv[4]
           result = json.loads(result_path.read_text(encoding="utf-8"))
           assert result["ok"] is True, result
           assert result["method"] == "init_fetch_fallback", result
           actual = subprocess.check_output(["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True).strip()
+          branch = subprocess.check_output(["git", "-C", str(checkout), "branch", "--show-current"], text=True).strip()
           assert actual == expected, (actual, expected)
+          assert branch == "research/forced-fallback", branch
+          assert not (checkout / "STALE_PARTIAL_FILE").exists(), "stale partial-clone file survived cleanup"
           audit = audit_path.read_text(encoding="utf-8")
           assert '"event": "direct_clone"' in audit
           assert '"event": "fallback_fetch"' in audit
@@ -170,15 +188,18 @@ jobs:
           cp "${root}/fallback-result.json" artifacts/recovery/forced-fallback-result.json
           cp "${root}/fallback-audit.jsonl" artifacts/recovery/forced-fallback-audit.jsonl
 
-      - name: Final worktree check
+      - name: Final worktree and provenance check
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+          if [ "${RECOVERY_MODE:-}" = "fallback_exact_ref" ]; then
+            test "$(git branch --show-current)" = "${EXPECTED_REF}"
+          fi
           git status --short
 
       - name: Upload recovery evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: v23r-recovery-evidence-${{ github.run_id }}
           path: artifacts/recovery/
