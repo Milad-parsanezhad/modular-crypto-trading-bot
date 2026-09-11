@@ -1,0 +1,155 @@
+name: v25-prospective-future-evidence
+
+on:
+  push:
+    branches: [research/v25-risk-aware-ranking-forward]
+    paths:
+      - "research_bot/future_evidence_v25.py"
+      - "research_bot/ccxt_external_v24c.py"
+      - "scripts/run_v25_future_snapshot.py"
+      - "tests/test_future_evidence_v25.py"
+      - ".github/workflows/v25-prospective-future-evidence.yml"
+  workflow_dispatch:
+  schedule:
+    # Deliberately avoid minute 0; GitHub documents higher schedule delay/drop
+    # risk around the start of the hour.  UTC, ~23 min after each 4h close.
+    - cron: "23 0,4,8,12,16,20 * * *"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: v25-prospective-future-evidence
+  cancel-in-progress: false
+
+env:
+  EXPECTED_SHA: ${{ github.sha }}
+  V24B_RUN_ID: "34578494059"
+  V24B_ARTIFACT: "v24b-family-portfolio-34578494059"
+  V25_RANK_RUN_ID: "34590214474"
+  V25_RANK_ARTIFACT: "v25-risk-aware-ranking-34590214474"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "1"
+
+jobs:
+  prospective-collector:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - name: Checkout exact collector SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 1
+          clean: true
+          persist-credentials: false
+
+      - name: Verify source provenance
+        run: test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install project and exact frozen-model environment
+        run: |
+          python -m pip install --no-cache-dir -e '.[dev]'
+          python -m pip install --no-cache-dir --upgrade --force-reinstall \
+            'numpy==2.5.3' \
+            'pandas==3.0.5' \
+            'scikit-learn==1.9.1' \
+            'joblib==1.6.0' \
+            'scipy==1.18.1' \
+            'threadpoolctl==3.6.0' \
+            'cloudpickle==3.1.2'
+          python -m pip check
+
+      - name: Download immutable event filters and frozen v0.25 ranker
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf frozen/v24b frozen/v25
+          mkdir -p frozen/v24b frozen/v25
+          gh run download "${V24B_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name "${V24B_ARTIFACT}" --dir frozen/v24b
+          gh run download "${V25_RANK_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name "${V25_RANK_ARTIFACT}" --dir frozen/v25
+          test -f frozen/v24b/family_validation_frozen_champions.joblib
+          test -f frozen/v24b/strategy_event_dataset.csv
+          test -f frozen/v25/ranker_snapshot.joblib
+          test -f frozen/v25/ranker_manifest.json
+          test -f frozen/v25/decision.json
+
+      - name: Recover previous append-only evidence artifact when available
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf previous
+          mkdir -p previous
+          WORKFLOW="v25-prospective-future-evidence.yml"
+          BRANCH="${GITHUB_REF_NAME}"
+          PREV_RUN=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW}/runs?branch=${BRANCH}&status=completed&per_page=30" \
+            --jq ".workflow_runs[] | select(.id != ${GITHUB_RUN_ID}) | select(.conclusion == \"success\") | .id" 2>/dev/null | head -n 1 || true)
+          if [ -n "${PREV_RUN}" ]; then
+            PREV_ARTIFACT="v25-prospective-evidence-${PREV_RUN}"
+            gh run download "${PREV_RUN}" --repo "${GITHUB_REPOSITORY}" --name "${PREV_ARTIFACT}" --dir previous || true
+          fi
+          if [ -f previous/decision.json ]; then
+            echo "PREVIOUS_ARG=--previous-dir previous" >> "${GITHUB_ENV}"
+          else
+            echo "PREVIOUS_ARG=" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Prospective causality and first-look tests
+        run: |
+          pytest -q \
+            tests/test_future_evidence_v25.py \
+            tests/test_frozen_snapshot_v24d.py \
+            tests/test_risk_ranker_v25.py
+
+      - name: Collect blinded future snapshot or execute the one permitted mature read
+        run: |
+          python scripts/run_v25_future_snapshot.py \
+            --v24b-dir frozen/v24b \
+            --v25-dir frozen/v25 \
+            --output-dir artifacts/v25-prospective-evidence \
+            ${PREVIOUS_ARG}
+
+      - name: Verify fail-closed prospective decision
+        run: |
+          python - <<'PY'
+          import json
+          p = 'artifacts/v25-prospective-evidence/decision.json'
+          d = json.load(open(p, encoding='utf-8'))
+          assert d.get('forward_paper_authorized') is False, d
+          assert d.get('paper_replacement_authorized') is False, d
+          assert d.get('live_execution_authorized') is False, d
+          state = d.get('state')
+          terminal = {'FUTURE_ALLOCATOR_GATE_PASS_PRE_SEARCH_AUDIT', 'FUTURE_ALLOCATOR_GATE_FAIL'}
+          if state in terminal:
+              assert d.get('sample_spent') is True, d
+              assert d.get('first_mature_read_is_terminal') is True, d
+          elif state != 'WAITING_FOR_FUTURE_BOUNDARY':
+              assert d.get('economics_blinded') is True, d
+              assert d.get('sample_spent') is False, d
+          PY
+
+      - name: Record defense-grade run provenance
+        if: always()
+        run: |
+          mkdir -p artifacts/v25-prospective-evidence
+          printf '%s\n' "${EXPECTED_SHA}" > artifacts/v25-prospective-evidence/collector_source_commit.txt
+          printf '%s\n' "${GITHUB_RUN_ID}" > artifacts/v25-prospective-evidence/workflow_run_id.txt
+          printf '%s\n' "${V24B_RUN_ID}" > artifacts/v25-prospective-evidence/frozen_v24b_source_run.txt
+          printf '%s\n' "${V25_RANK_RUN_ID}" > artifacts/v25-prospective-evidence/frozen_ranker_source_run.txt
+          python -m pip freeze --all > artifacts/v25-prospective-evidence/pip-freeze.txt
+
+      - name: Upload immutable prospective snapshot
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: v25-prospective-evidence-${{ github.run_id }}
+          path: artifacts/v25-prospective-evidence/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 9
