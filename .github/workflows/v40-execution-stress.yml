@@ -1,0 +1,55 @@
+name: v40-execution-stress
+on:
+  push:
+    branches: [research/v40-execution-stress]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  execution-stress:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - run: python -m pytest -q tests/test_execution_stress_v40.py tests/test_walk_forward_v39.py tests/test_soft_portfolio_v38.py tests/test_kraken_holdout_v34.py
+      - name: Wait for frozen v0.39 run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 120); do
+            status=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repos/parsa314/modular-crypto-trading-bot/actions/runs/34642910532 | python -c 'import json,sys; x=json.load(sys.stdin); print(x.get("status",""), x.get("conclusion") or "")')
+            echo "$status"
+            case "$status" in
+              "completed success") exit 0 ;;
+              completed*) echo "v0.39 did not complete successfully"; exit 1 ;;
+            esac
+            sleep 15
+          done
+          exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: v38-soft-portfolio
+          path: frozen-v38
+          github-token: ${{ github.token }}
+          repository: parsa314/modular-crypto-trading-bot
+          run-id: 34642791984
+      - uses: actions/download-artifact@v4
+        with:
+          name: v39-walk-forward-stability
+          path: frozen-v39
+          github-token: ${{ github.token }}
+          repository: parsa314/modular-crypto-trading-bot
+          run-id: 34642910532
+      - name: Run v0.40 execution stress
+        run: python scripts/run_v40_execution_stress.py --v38-artifact-dir frozen-v38 --v39-artifact-dir frozen-v39 --output-dir artifacts/v40-execution-stress
+      - run: cat artifacts/v40-execution-stress/decision_v40.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v40-execution-stress
+          path: artifacts/v40-execution-stress
+          retention-days: 90
