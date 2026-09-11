@@ -1,11 +1,6 @@
 name: v25-prospective-evidence-ledger
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/v25-prospective-evidence-ledger.yml"
-  workflow_dispatch:
   schedule:
     # GitHub schedules run only from the default branch. Offset from minute 0 to
     # reduce documented delay/drop risk during peak scheduler load.
