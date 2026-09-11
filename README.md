@@ -1,122 +1,137 @@
-# Modular Crypto Trading Bot — Evidence-Driven Research Platform
+# Modular Crypto Trading Bot
 
-Academic, modular cryptocurrency trading research platform for building and validating a multi-market intelligent trading system.
+**Evidence-driven MSc research platform for cryptocurrency strategy discovery, financial machine learning, portfolio risk and reproducible out-of-sample validation.**
 
-> **Current branch:** `research-v08-advanced-integration`  
-> **Safety:** `LIVE` execution is disabled by default.  
-> **Scientific status:** this repository does **not** claim a validated profitable strategy. Negative OOS results are preserved.
+> **Scientific contract:** Evidence Before Opinion  
+> **Execution status:** `LIVE_EXECUTION = false`  
+> **Research status:** promising candidates exist, but **no strategy is claimed as validated guaranteed alpha or profit**.
 
-## Core research contract
+## Why this repository exists
 
-**Evidence Before Opinion.** A trading claim is not accepted unless it has point-in-time data, provenance, reproducible artifacts, realistic costs and out-of-sample validation.
+This project is not a collection of indicator screenshots or a backtest leaderboard. It is an academic research system designed to answer a harder question:
 
-The platform now follows this path:
+> **Can a cryptocurrency trading hypothesis survive realistic costs, leakage controls, model-selection bias, regime change, portfolio overlap and genuinely fresh evidence?**
 
-**Dynamic Universe → Eligibility/Coverage → Point-in-Time Features → Alpha/Ranking → Regime → Model Tournament → Cost/Uncertainty-Aware Abstention → Independent Risk → Cost-Aware Execution → Robust Validation → Paper Trading → Testnet → Live-Readiness Audit**
+The repository intentionally preserves **negative, rejected and blocked experiments** because they are part of the thesis evidence trail.
 
-Ichimoku is a candidate feature family and must earn its place through ablation. RL/Transformers/LLMs are challengers, not default winners.
+## Research architecture
 
-## What exists today
+`Hypothesis & Literature → Causal/PIT Data → Strategy Event Engine → Baselines → Tabular/Temporal ML → Purged Validation → Multiple-Testing Audit → Fresh External/Forward Evidence → MTM/CVaR Portfolio Risk → Forward PAPER → Defense Evidence`
 
-### Existing research engine (v0.1–v0.6)
-- public OHLCV and derivatives ingestion,
-- BTC/USDT 4h real-market baselines,
-- leakage-safe technical/liquidity features,
-- Ichimoku candidate features,
-- CUSUM + triple-barrier replication,
-- purged/walk-forward validation,
-- funding/basis/order-flow research,
-- regime-conditional ablations,
-- cross-sectional research prototype,
-- CPCV/PBO/Deflated-Sharpe diagnostics,
-- GitHub Actions and Colab notebooks.
+Core principles:
 
-### v0.8 advanced research integration
-- `research_bot/contracts.py` — evidence/status/decision/execution contracts,
-- `research_bot/point_in_time.py` — availability-time as-of joins for on-chain/news/fundamental data,
-- `research_bot/universe.py` — dynamic eligibility, rejection reasons, deterministic dedup and measured coverage,
-- `research_bot/ichimoku_advanced.py` — leakage-safe Ichimoku state and algorithmic triangle-under-Kumo candidate detector,
-- `research_bot/decision.py` — Net-Alpha decision engine with cost/risk/uncertainty-aware abstention,
-- `research_bot/risk.py` — independent drawdown/exposure/liquidity/turnover/CVaR risk gate and kill switch,
-- `research_bot/execution.py` — guarded PAPER/BACKTEST/TESTNET simulator with fees, slippage, partial fills and idempotency,
-- `research_bot/orchestrator.py` — forecast → decision → risk → execution integration,
-- `research_bot/reproducibility.py` — dataset fingerprinting and experiment manifests,
-- richer backtest diagnostics including VaR/CVaR, profit factor, exposure, turnover and explicit/funding costs.
+- point-in-time / closed-bar feature construction;
+- next-open execution semantics where applicable;
+- fees, slippage and cost-stress scenarios;
+- train/development, validation and test separation with embargo/purging;
+- simple baselines before complex ML;
+- multi-seed evaluation for stochastic models;
+- ablation and incremental-value tests;
+- moving-block bootstrap and search-aware diagnostics;
+- PBO / Deflated-Sharpe-style diagnostics and CPCV when applicable;
+- mark-to-market portfolio risk, correlation and CVaR constraints;
+- immutable manifests, artifact digests and CI provenance;
+- no same-test rescue tuning;
+- LIVE execution remains fail-closed.
 
-See `docs/V08_ADVANCED_RESEARCH_INTEGRATION.md` for the research-to-code mapping.
+## Current research state — 2026-09-11
 
-## Scientific findings already recorded
+The active research chain is maintained through stacked, auditable pull requests:
 
-The project has intentionally retained negative findings: a simple directional ML baseline did not outperform its benchmark in the initial real-market window, and CUSUM + triple-barrier labelling did not create alpha by itself. These findings changed the project toward cross-sectional ranking, derivatives/order-flow evidence, stronger validation and explicit execution/risk gates.
+- **v0.23r — ML rebuild and leakage hardening:** rigorous panel splitting, feature deny-list, deterministic provenance and research-CI hardening. [PR #21](https://github.com/parsa314/modular-crypto-trading-bot/pull/21)
+- **v0.24 — strategy-aware meta-labeling:** internal test improved some local metrics but failed breadth, bootstrap, PBO/DSR and cost-stress promotion gates. **Decision: `NO_META_MODEL_PROMOTED`.** [PR #22](https://github.com/parsa314/modular-crypto-trading-bot/pull/22)
+- **v0.24b — family-specific meta-labeling + overlap-aware portfolio risk:** some family-level shadow uplift appeared, but the filtered portfolio underperformed and breached the research DD kill. **Decision: `NO_FAMILY_META_PROMOTION`.** [PR #23](https://github.com/parsa314/modular-crypto-trading-bot/pull/23)
+- **v0.24c — fresh-evidence ladder + MTM risk + temporal challengers:** external validation is fail-closed until exact frozen-model reproducibility is guaranteed. Temporal LSTM/GRU/TCN/CNN-LSTM/Transformer challengers are selected on validation only; no previous terminal test is reused for promotion. [PR #24](https://github.com/parsa314/modular-crypto-trading-bot/pull/24)
+
+The v0.24c temporal run completed successfully as an engineering/validation experiment. Frozen validation challengers are **TCN (H4_S6_BREAKOUT)** and **LSTM (H4_D1_OB_BOS_RISK)**, but neither is promoted until fresh external or future-time evidence is consumed.
+
+The external path deliberately stopped when exact frozen-model reproduction differed by one selected validation event. That mismatch is treated as a **reproducibility defect**, not silently rounded away.
+
+See [`docs/PROJECT_STATUS_2026-09-11.md`](docs/PROJECT_STATUS_2026-09-11.md) for the defense-oriented evidence map.
+
+## Major modules
+
+- `research_bot/` — causal features, strategy labs, ML, risk and evidence contracts
+- `scripts/` — reproducible experiment entry points
+- `tests/` — leakage, causality, risk, provenance and regression tests
+- `.github/workflows/` — CI evidence pipelines and prospective collection jobs
+- `docs/` — protocols, dated result records, traceability and thesis/defense evidence
+
+## Model families under research
+
+The project treats models as challengers, not assumed winners:
+
+- Logistic / Ridge / SGD baselines
+- Random Forest / Extra Trees / Gradient Boosting / HistGradientBoosting
+- optional XGBoost / LightGBM / CatBoost research arms
+- LSTM / GRU / CNN-LSTM / TCN / Transformer temporal models
+- unsupervised regime/anomaly context
+- future ensemble and portfolio-allocation layers
+- reinforcement learning only after upstream portfolio evidence passes
+
+## Strategy families under research
+
+- causal Ichimoku variants, including S6 and Kumo/triangle hypotheses
+- Order Block / BOS / retest variants
+- Supply & Demand
+- correlation divergence / SMT-style hypotheses
+- ICT/TTrades-derived causal adaptations
+- time-series momentum and higher-timeframe regime filters
+
+Source-derived trading concepts are treated as **hypothesis generators**, never as proof of alpha.
 
 ## Install
 
 ```bash
-pip install -e ".[dev]"
+python -m pip install -e '.[dev]'
 pytest -q
 ```
 
-## v0.8 engineering smoke test
+Optional research stacks:
 
 ```bash
-python scripts/run_research_core_v08.py --output-dir artifacts/v08
+python -m pip install -e '.[ml]'
+python -m pip install -e '.[deep]'
+python -m pip install -e '.[rl]'
 ```
 
-Without `--input-csv`, this command uses deterministic **synthetic smoke data only to test engineering contracts**. Synthetic results are never valid thesis performance evidence.
+## Reproducibility rule
 
-With a real OHLCV CSV:
+Every promotable experiment should preserve:
 
-```bash
-python scripts/run_research_core_v08.py \
-  --input-csv path/to/real_ohlcv.csv \
-  --fee-bps 10 \
-  --slippage-bps 2 \
-  --output-dir artifacts/v08-real
-```
+1. source commit SHA;
+2. frozen configuration / hypothesis;
+3. data provenance and coverage;
+4. dependency environment;
+5. dataset or artifact fingerprints;
+6. validation-only selection logic;
+7. untouched/fresh evaluation evidence;
+8. cost and risk assumptions;
+9. machine-readable decision output;
+10. explicit PAPER/LIVE authorization flags.
 
-Even a real single CSV run is not considered validated until it passes the full WFV/CPCV, regime, multiple-testing, cost and untouched-test protocol.
+A successful workflow means the experiment executed according to contract. It does **not** automatically mean the hypothesis is economically valid.
 
-## Required validation ladder
+## Thesis / defense orientation
 
-1. Hypothesis registration
-2. Timestamp/lineage audit
-3. Leakage audit
-4. Purged WFV/CPCV
-5. Simple baselines
-6. Train/validation-only tuning
-7. Multiple seeds for stochastic models
-8. Fees/spread/slippage/funding
-9. Liquidity/capacity checks
-10. Regime stability
-11. Bootstrap confidence intervals
-12. PBO / Deflated Sharpe when strategy multiplicity exists
-13. Ablation
-14. Untouched final test
-15. Forward paper trading
-16. Testnet
-17. Live-readiness audit
+This repository is being maintained as an evidence package for an MSc thesis. Results are organized so that Chapter 4 and the defense can distinguish:
 
-## Execution safety
+- **TESTED** — executed under a frozen protocol;
+- **REJECTED** — scientifically tested and failed a gate;
+- **BLOCKED** — infrastructure/data/reproducibility prevented a valid read;
+- **CHALLENGER / HYPOTHESIS** — promising but not yet externally/forward validated;
+- **DATA_UNAVAILABLE** — evidence is not fabricated or proxied without explicit labeling.
 
-Predictive models never call an exchange directly. Signals must pass through cost/uncertainty abstention, an independent risk engine and an execution adapter. v0.8 contains no live-order implementation; the paper engine fails closed when `LIVE` is requested without explicit readiness.
+## Safety
 
-## Immediate next work
+Predictive models do not directly authorize exchange execution. Portfolio/risk controls are independent, and research branches keep real-money execution disabled. No result in this repository should be interpreted as financial advice or a guarantee of returns.
 
-- run dynamic-universe discovery with real public market metadata and persist coverage/rejection artifacts,
-- connect v0.6 cross-sectional ranking to the dynamic universe,
-- run Ichimoku and risk ablations under identical OOS/cost assumptions,
-- add point-in-time derivatives/on-chain/whale/fundamental connectors only where historical availability is trustworthy,
-- stabilize forward paper execution and reconciliation,
-- build the research/dashboard layer after backend artifacts are stable.
+## Repository governance
 
-## v0.17 frozen Ichimoku Strategy Lab
+- [Contribution guidelines](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Citation metadata](CITATION.cff)
 
-The repository now includes a causal 4H comparison of B0, S1-S6, IRCP, C1 and C2 plus the IRGC-S event/meta-label candidate. Run:
+---
 
-```bash
-pytest -q tests/test_strategy_lab_v17.py tests/test_binance_spot_archive_v17.py tests/test_forward_candidate_v17.py
-PYTHONPATH=. python scripts/run_strategy_lab_v17.py --archive-cache data/cache --bars 20000 --output-dir artifacts/v17-strategy-lab
-PYTHONPATH=. python scripts/run_forward_candidate_v17.py --archive-cache data/cache --symbol BTCUSDT
-```
-
-See `docs/V17_ICHIMOKU_STRATEGY_LAB_PROTOCOL.md` and the dated v0.17 results report. The S6 adapter emits observation-only paper candidates with a 0.25% risk budget, 35% per-asset cap, 70% portfolio-gross cap and 5% drawdown kill switch. Results remain research-only and cannot enable live execution.
+Maintained by **Milad Parsanezhad** as an academic financial-ML and cryptocurrency research project.
