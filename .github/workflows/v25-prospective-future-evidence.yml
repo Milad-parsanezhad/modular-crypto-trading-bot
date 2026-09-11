@@ -9,10 +9,17 @@ on:
       - "scripts/run_v25_future_snapshot.py"
       - "tests/test_future_evidence_v25.py"
       - ".github/workflows/v25-prospective-future-evidence.yml"
+  pull_request:
+    paths:
+      - "research_bot/future_evidence_v25.py"
+      - "research_bot/ccxt_external_v24c.py"
+      - "scripts/run_v25_future_snapshot.py"
+      - "tests/test_future_evidence_v25.py"
+      - ".github/workflows/v25-prospective-future-evidence.yml"
   workflow_dispatch:
   schedule:
-    # Deliberately avoid minute 0; GitHub documents higher schedule delay/drop
-    # risk around the start of the hour.  UTC, ~23 min after each 4h close.
+    # This schedule is useful only once the workflow exists on the default branch.
+    # Deliberately avoid minute 0: GitHub documents higher delay/drop risk there.
     - cron: "23 0,4,8,12,16,20 * * *"
 
 permissions:
@@ -20,11 +27,11 @@ permissions:
   actions: read
 
 concurrency:
-  group: v25-prospective-future-evidence
+  group: v25-prospective-future-evidence-${{ github.ref }}
   cancel-in-progress: false
 
 env:
-  EXPECTED_SHA: ${{ github.sha }}
+  EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
   V24B_RUN_ID: "34578494059"
   V24B_ARTIFACT: "v24b-family-portfolio-34578494059"
   V25_RANK_RUN_ID: "34590214474"
@@ -86,6 +93,13 @@ jobs:
         run: |
           rm -rf previous
           mkdir -p previous
+          # PR runs are engineering validation only and intentionally start without
+          # a prior prospective artifact. Persistent recovery is used by branch/main
+          # scheduled runs where GITHUB_REF_NAME is a stable branch name.
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            echo "PREVIOUS_ARG=" >> "${GITHUB_ENV}"
+            exit 0
+          fi
           WORKFLOW="v25-prospective-future-evidence.yml"
           BRANCH="${GITHUB_REF_NAME}"
           PREV_RUN=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW}/runs?branch=${BRANCH}&status=completed&per_page=30" \
