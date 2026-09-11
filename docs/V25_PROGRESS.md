@@ -39,14 +39,36 @@ The original 12:00 UTC future boundary was replaced **before eligible outcome re
 - [x] rolling CVaR included in the actual promotion gate
 - [x] paired moving-block bootstrap on portfolio close-MTM return uplift implemented
 - [x] regression tests added for preboundary exclusion, blinding, terminal first-look, append-only restatements, cost-stress monotonicity and CCXT candle cursor
-- [x] scheduled prospective collector workflow authored at 4h + 23 minutes
-- [ ] current prospective collector CI must complete green on the final frozen branch SHA
-- [ ] default-branch scheduler must be installed on `main` and pin that exact green collector SHA
-- [ ] first immutable prospective snapshot artifact must be created without economic peeking
+- [x] research-branch prospective collector CI green on the frozen collector SHA `fac456ccc0eb445ce7f2d8554840f37da9142ac7` (run `34595710266`)
+- [x] default-branch scheduler installed on `main` and pinned to that exact frozen collector SHA
+- [x] branch workflow separated into engineering-only validation so future merges cannot accidentally create a second scheduled collector
+- [x] first immutable default-branch prospective snapshot created with economics blinded (`34602117989`, artifact `10264906094`)
+- [x] cryptographic chain + complete final SHA-256 manifest hardened and revalidated (`34602394915`, artifact `10264374727`, digest `sha256:0ed38eddb141325c06adae072260462440ae45f5deac3e1e4da6a5c1025d31e4`)
+- [x] canonical ledger links to its previous accepted artifact/run/decision hash rather than silently replacing evidence
 - [ ] sufficient future-time evidence accumulated (>=168h and >=200 events/venue)
 - [ ] first and only mature future MTM / PF / DD / CVaR / 36bps / paired-CI gate evaluated
 - [ ] CPCV / PBO / DSR search-aware review if candidate survives
 - [ ] Forward PAPER candidate decision if all prior gates survive
+
+## Active prospective ledger
+
+Default-branch workflow: `.github/workflows/v25-prospective-evidence-ledger.yml`
+
+Frozen collector commit: `fac456ccc0eb445ce7f2d8554840f37da9142ac7`
+
+Operational schedule: `23 0,4,8,12,16,20 * * *` UTC.
+
+Canonical pre-boundary ledger state after run `34602394915`:
+
+- scientific state: `WAITING_FOR_FUTURE_BOUNDARY`;
+- scientific label: `BLINDED_NOT_STARTED`;
+- economics exposed: no;
+- sample spent: no;
+- forward PAPER authorization: false;
+- PAPER replacement authorization: false;
+- LIVE authorization: false.
+
+The first scheduled run capable of observing a fully completed bar born at the `16:00 UTC` prospective boundary is the `20:23 UTC` run, subject to normal GitHub scheduler delay. Until maturity, only evidence coverage/provenance is allowed to surface.
 
 ## Defense rule
 
