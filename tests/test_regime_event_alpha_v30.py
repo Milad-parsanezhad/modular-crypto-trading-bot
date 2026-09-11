@@ -71,28 +71,32 @@ def test_manifest_preserves_untouched_kucoin_and_frozen_risk() -> None:
 def test_market_regime_is_future_mutation_invariant() -> None:
     x = frame(11)
     cutoff = 360
+    cutoff_ts = x.loc[cutoff, "timestamp"]
     a = persistent_market_regime(x, "4h")
     b = persistent_market_regime(mutate_future(x, cutoff), "4h")
     pd.testing.assert_series_equal(
-        a.loc[:cutoff, "market_regime_v30"].reset_index(drop=True),
-        b.loc[:cutoff, "market_regime_v30"].reset_index(drop=True),
+        a.loc[a["timestamp"] <= cutoff_ts, "market_regime_v30"].reset_index(drop=True),
+        b.loc[b["timestamp"] <= cutoff_ts, "market_regime_v30"].reset_index(drop=True),
     )
 
 
 def test_dispersion_is_future_mutation_invariant() -> None:
     frames = {f"S{i}/USDT": frame(100 + i) for i in range(5)}
     cutoff = 360
+    cutoff_ts = next(iter(frames.values())).loc[cutoff, "timestamp"]
     mutated = {k: mutate_future(v, cutoff) for k, v in frames.items()}
     a = cross_sectional_dispersion(frames, "4h")
     b = cross_sectional_dispersion(mutated, "4h")
+    am = a["timestamp"] <= cutoff_ts
+    bm = b["timestamp"] <= cutoff_ts
     pd.testing.assert_series_equal(
-        a.loc[:cutoff, "dispersion_v30"].reset_index(drop=True),
-        b.loc[:cutoff, "dispersion_v30"].reset_index(drop=True),
+        a.loc[am, "dispersion_v30"].reset_index(drop=True),
+        b.loc[bm, "dispersion_v30"].reset_index(drop=True),
         check_names=False,
     )
     pd.testing.assert_series_equal(
-        a.loc[:cutoff, "dispersion_cap_v30"].reset_index(drop=True),
-        b.loc[:cutoff, "dispersion_cap_v30"].reset_index(drop=True),
+        a.loc[am, "dispersion_cap_v30"].reset_index(drop=True),
+        b.loc[bm, "dispersion_cap_v30"].reset_index(drop=True),
         check_names=False,
     )
 
@@ -104,6 +108,7 @@ def test_v30_signal_is_future_mutation_invariant() -> None:
     disp = cross_sectional_dispersion(peers, "4h")
     candidate = next(c for c in V30_CANDIDATES if c.name == "V30_H4_CUSUM_BREAKOUT_3")
     cutoff = 360
+    cutoff_ts = target.loc[cutoff, "timestamp"]
     d1, f1 = generate_direction_v30(candidate, target, market_frame=btc, dispersion=disp)
 
     target2 = mutate_future(target, cutoff)
@@ -112,11 +117,13 @@ def test_v30_signal_is_future_mutation_invariant() -> None:
     disp2 = cross_sectional_dispersion(peers2, "4h")
     d2, f2 = generate_direction_v30(candidate, target2, market_frame=btc2, dispersion=disp2)
 
-    pd.testing.assert_series_equal(d1.loc[:cutoff].reset_index(drop=True), d2.loc[:cutoff].reset_index(drop=True))
+    mask1 = f1["timestamp"] <= cutoff_ts
+    mask2 = f2["timestamp"] <= cutoff_ts
+    pd.testing.assert_series_equal(d1.loc[mask1].reset_index(drop=True), d2.loc[mask2].reset_index(drop=True))
     for col in ["market_regime_v30", "dispersion_v30", "dispersion_cap_v30", "cusum_positive_v30", "cusum_negative_v30"]:
         pd.testing.assert_series_equal(
-            f1.loc[:cutoff, col].reset_index(drop=True),
-            f2.loc[:cutoff, col].reset_index(drop=True),
+            f1.loc[mask1, col].reset_index(drop=True),
+            f2.loc[mask2, col].reset_index(drop=True),
             check_names=False,
         )
 
