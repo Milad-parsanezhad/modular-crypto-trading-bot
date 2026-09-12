@@ -9,7 +9,7 @@ correlated observations and must not be split as if they were independent rows.
 This helper resamples contiguous *timestamp clusters*. Each selected timestamp
 is copied with all of its venue rows. The target block size remains roughly the
 frozen 64 training events, but cluster integrity always takes precedence over an
-exact row count.
+exact row count. Blocks never wrap from the end of history back to the start.
 """
 
 from dataclasses import dataclass
@@ -25,6 +25,7 @@ class TimestampClusterBootstrapDiagnosticsV43:
     resampled_rows: int
     selected_blocks: int
     target_block_events: int
+    circular_wrap_used: bool = False
 
 
 def timestamp_cluster_block_resample_v43(
@@ -38,9 +39,10 @@ def timestamp_cluster_block_resample_v43(
     """Moving-block bootstrap preserving all rows within each timestamp cluster.
 
     Blocks start at a random observed timestamp and advance contiguously through
-    observed timestamps until the block contains at least ``target_block_events``
-    rows. Whole timestamp clusters are appended; they are never split. Blocks are
-    repeated until the resample has at least the original number of rows.
+    later observed timestamps until either the block contains at least
+    ``target_block_events`` rows or history ends. Whole timestamp clusters are
+    appended; they are never split. A new independently sampled block begins
+    after an end-of-history truncation. There is no circular wrap.
 
     No labels/outcomes are inspected by this function.
     """
@@ -52,7 +54,7 @@ def timestamp_cluster_block_resample_v43(
         raise ValueError("target_block_events must be >=2")
     if events.empty:
         empty = events.copy().reset_index(drop=True)
-        return empty, TimestampClusterBootstrapDiagnosticsV43(0, 0, 0, 0, int(target_block_events))
+        return empty, TimestampClusterBootstrapDiagnosticsV43(0, 0, 0, 0, int(target_block_events), False)
 
     ordered = events.copy()
     ordered[timestamp_col] = pd.to_datetime(ordered[timestamp_col], utc=True, errors="raise")
@@ -75,16 +77,12 @@ def timestamp_cluster_block_resample_v43(
         block_parts: list[np.ndarray] = []
         block_rows = 0
         j = start
-        while block_rows < int(target_block_events):
+        while j < n_ts and block_rows < int(target_block_events):
             ts = timestamps[j]
             pos = groups[ts]
             block_parts.append(pos)
             block_rows += len(pos)
             j += 1
-            if j >= n_ts:
-                j = 0
-            if j == start:
-                break
         block = np.concatenate(block_parts) if block_parts else np.empty(0, dtype=np.int64)
         if block.size == 0:
             raise RuntimeError("empty timestamp-cluster block")
@@ -111,5 +109,6 @@ def timestamp_cluster_block_resample_v43(
         resampled_rows=int(len(out)),
         selected_blocks=int(block_count),
         target_block_events=int(target_block_events),
+        circular_wrap_used=False,
     )
     return out, diag
