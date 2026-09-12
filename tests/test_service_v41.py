@@ -30,7 +30,8 @@ def test_service_reports_research_only_and_sealed_holdout() -> None:
     assert h["live_execution"] is False
     assert h["kraken_holdout"] == "SEALED"
 
-    assert s["current_experiment"] == "v0.41"
+    assert s["latest_completed_experiment"] == "v0.50"
+    assert s["latest_completed_decision"] == "V50_NONOVERLAP_FAILURE_SUPPORTED"
     assert s["reserved_holdout"] == "kraken"
     assert s["kraken_holdout"] == "SEALED"
     assert s["paper_execution"] is False
