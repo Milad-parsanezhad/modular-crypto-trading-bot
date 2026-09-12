@@ -29,8 +29,8 @@ jobs:
           pip install -e .
           pip install pytest
 
-      - name: Run v0.41 and CLI invariants
-        run: pytest -q tests/test_event_competing_risk_v41.py tests/test_v41_vectorized_equivalence.py tests/test_cli_v41.py
+      - name: Run v0.41, CLI and service invariants
+        run: pytest -q tests/test_event_competing_risk_v41.py tests/test_v41_vectorized_equivalence.py tests/test_cli_v41.py tests/test_service_v41.py
 
       - name: Compile frozen runners
         run: |
