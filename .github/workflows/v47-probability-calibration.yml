@@ -1,0 +1,198 @@
+name: v0.47 Probability Calibration Development
+
+on:
+  pull_request:
+    paths:
+      - 'research_bot/probability_calibration_v47.py'
+      - 'scripts/run_v47_probability_calibration.py'
+      - 'scripts/run_v47_probability_calibration_compat.py'
+      - 'tests/test_probability_calibration_v47.py'
+      - 'docs/V47_PROBABILITY_CALIBRATION_PREREGISTRATION.md'
+      - 'docs/V47_PROBABILITY_CALIBRATION_RESEARCH_2026-09-12.md'
+      - 'docs/V47_ENGINEERING_REPAIR_2026-09-12.md'
+      - '.github/workflows/v47-probability-calibration.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: v47-calibration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  EXPECTED_PREREG_HEAD: 7959089a3816b1b3cf1b4179ee386285be4e0b5c
+  CANONICAL_V46_HEAD: e3fa7d73e8ef2b7e3bcd5a0f61b61147b055fbd1
+  SOURCE_V44_RUN: '34700944062'
+  SOURCE_V46_RUN: '34704267477'
+
+jobs:
+  empirical-v47:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact scientific head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact head and frozen prereg lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL=$(git rev-parse HEAD)
+          EXPECTED='${{ github.event.pull_request.head.sha || github.sha }}'
+          test "$ACTUAL" = "$EXPECTED"
+          git cat-file -e "$EXPECTED_PREREG_HEAD^{commit}"
+          git merge-base --is-ancestor "$EXPECTED_PREREG_HEAD" "$ACTUAL"
+          grep -q 'PREREGISTERED BEFORE ANY v0.47 EMPIRICAL EXECUTION' docs/V47_PROBABILITY_CALIBRATION_PREREGISTRATION.md
+          grep -q 'FULL_COVERAGE_REQUIRED' docs/V47_PROBABILITY_CALIBRATION_PREREGISTRATION.md
+
+      - name: Verify inherited v0.46 scientific code is unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code "$CANONICAL_V46_HEAD" HEAD -- \
+            research_bot/economic_state_v46.py \
+            research_bot/event_competing_risk_v41.py \
+            research_bot/asset_crossvenue_v43.py \
+            scripts/run_v39_development_characterization.py \
+            scripts/run_v39_development_characterization_corrected.py
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install package and test runner
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . pytest
+          pip check
+          python - <<'PY'
+          import numpy, pandas, scipy, sklearn
+          print('numpy', numpy.__version__)
+          print('pandas', pandas.__version__)
+          print('scipy', scipy.__version__)
+          print('sklearn', sklearn.__version__)
+          PY
+
+      - name: Run frozen v0.47 tests
+        run: pytest -q tests/test_probability_calibration_v47.py tests/test_economic_state_v46.py
+
+      - name: Download exact canonical v0.44 prepared evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: v44-prepared-data
+          path: work/v44
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_V44_RUN }}
+
+      - name: Download exact canonical v0.46 reference evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: v46-economic-state-representation-valid
+          path: work/v46
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_V46_RUN }}
+
+      - name: Verify source artifacts and fail-closed guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          v44=Path('work/v44')
+          required=['events_v44.pkl.gz','fold_index_v44.csv','prepared_hashes_v44.json','prep_status_v44.json']
+          for name in required:
+              assert (v44/name).is_file(), name
+          hashes=json.loads((v44/'prepared_hashes_v44.json').read_text())
+          got=hashlib.sha256((v44/'events_v44.pkl.gz').read_bytes()).hexdigest()
+          assert got == hashes['events_v44_pickle_sha256']
+          status=json.loads((v44/'prep_status_v44.json').read_text())
+          assert status['status']=='READY'
+          assert status['kraken_touched'] is False
+          assert status['paper_execution'] is False
+          assert status['live_execution'] is False
+
+          v46=Path('work/v46')
+          for name in ['decision_v46.json','execution_provenance_v46.json','forecast_metrics_v46.csv','output_hashes_v46.json']:
+              assert (v46/name).is_file(), name
+          prov=json.loads((v46/'execution_provenance_v46.json').read_text())
+          assert int(prov['workflow_run_id']) == int('34704267477')
+          assert prov['head_sha'] == 'e3fa7d73e8ef2b7e3bcd5a0f61b61147b055fbd1'
+          assert prov['kraken_touched'] is False
+          PY
+
+      - name: Execute repaired frozen v0.47 calibration ablation
+        run: |
+          python scripts/run_v47_probability_calibration_compat.py \
+            --input-dir work/v44 \
+            --v46-reference-dir work/v46 \
+            --output-dir results/v47_probability_calibration
+
+      - name: Verify canonical output contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in decision_v47.json support_manifest_v47.csv forecast_metrics_v47.csv calibration_parameters_v47.csv oos_predictions_v47.csv.gz post_governor_trades_v47.csv.gz fold_economics_v47.csv output_hashes_v47.json; do
+            test -f "results/v47_probability_calibration/$f"
+          done
+          python - <<'PY'
+          import json
+          d=json.load(open('results/v47_probability_calibration/decision_v47.json'))
+          assert d['control_lineage_verified'] is True
+          assert d['paired_same_run_c0_used_for_all_calibration_gates'] is True
+          assert d['canonical_v46_evaluation_units_match'] is True
+          assert d['canonical_v46_reference_run'] == 34704267477
+          assert d['cross_arm_metric_space']=='TARGET_STOP_TIME_COMMON_SPACE'
+          assert d['kraken_touched'] is False
+          assert d['paper_execution'] is False
+          assert d['live_execution'] is False
+          assert d['post_result_threshold_tuning'] is False
+          assert d['post_result_asset_pruning'] is False
+          assert d['post_result_regime_pruning'] is False
+          assert d['decision'] in {'V47_DEVELOPMENT_CANDIDATE','V47_CALIBRATION_REJECT_OR_INSUFFICIENT_EVIDENCE'}
+          PY
+
+      - name: Write execution provenance
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          out=Path('results/v47_probability_calibration')
+          p={
+            'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
+            'workflow_attempt': os.environ.get('GITHUB_RUN_ATTEMPT'),
+            'head_sha': subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip(),
+            'prereg_head': os.environ['EXPECTED_PREREG_HEAD'],
+            'source_v44_run': int(os.environ['SOURCE_V44_RUN']),
+            'source_v46_run': int(os.environ['SOURCE_V46_RUN']),
+            'canonical_v46_head': os.environ['CANONICAL_V46_HEAD'],
+            'calibration_fit_partition': 'CALIBRATION_ONLY',
+            'test_labels_used_for_calibration': False,
+            'paired_same_run_control': True,
+            'superseded_pre_repair_run': 34704888326,
+            'cross_machine_scalar_equality_guard_removed': True,
+            'scientific_arms_or_gates_changed_by_repair': False,
+            'kraken_touched': False,
+            'paper_execution': False,
+            'live_execution': False,
+          }
+          (out/'execution_provenance_v47.json').write_text(json.dumps(p,indent=2,sort_keys=True))
+          PY
+
+      - name: Upload canonical v0.47 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: v47-probability-calibration
+          path: results/v47_probability_calibration/
+          if-no-files-found: error
+          retention-days: 90
