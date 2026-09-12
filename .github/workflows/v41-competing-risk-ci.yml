@@ -6,6 +6,10 @@ on:
       - research/v40-two-stage-hurdle
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-v41:
     runs-on: ubuntu-latest
@@ -26,10 +30,12 @@ jobs:
           pip install pytest
 
       - name: Run v0.41 and CLI invariants
-        run: pytest -q tests/test_event_competing_risk_v41.py tests/test_cli_v41.py
+        run: pytest -q tests/test_event_competing_risk_v41.py tests/test_v41_vectorized_equivalence.py tests/test_cli_v41.py
 
-      - name: Compile frozen runner
-        run: python -m py_compile scripts/run_v41_competing_risk_characterization.py
+      - name: Compile frozen runners
+        run: |
+          python -m py_compile scripts/run_v41_competing_risk_characterization.py
+          python -m py_compile scripts/run_v41_competing_risk_characterization_fast.py
 
       - name: Run bot doctor
         run: modular-crypto-bot doctor
