@@ -1,0 +1,55 @@
+name: v44 Information Sampling Preregistration CI
+
+on:
+  pull_request:
+    branches:
+      - research/v43-asset-crossvenue-stability
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prereg-v44:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
+
+      - name: Verify v0.44 preregistration
+        run: test -f docs/V44_INFORMATION_DRIVEN_SAMPLING_PREREGISTRATION.md
+
+      - name: Run causal sampling invariants
+        run: pytest -q tests/test_information_sampling_v44.py
+
+      - name: Compile sampling primitive
+        run: python -m py_compile research_bot/information_sampling_v44.py
+
+      - name: Verify fail-closed manifest and no empirical runner
+        run: |
+          python - <<'PY'
+          from research_bot.information_sampling_v44 import preregistration_manifest_v44
+          m=preregistration_manifest_v44()
+          assert m['reserved_holdout']=='kraken'
+          assert m['kraken_touched'] is False
+          assert m['paper_execution'] is False
+          assert m['live_execution'] is False
+          assert m['threshold_search'] is False
+          assert m['tick_bar_reconstruction'] is False
+          assert m['empirical_execution_allowed'] is False
+          PY
+          test ! -f scripts/run_v44_empirical_characterization.py
+          echo 'v0.44 empirical execution remains locked until frozen v0.43 results exist.'
