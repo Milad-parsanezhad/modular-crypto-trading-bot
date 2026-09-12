@@ -1,0 +1,54 @@
+name: v39 Development Characterization Corrected
+
+on:
+  pull_request:
+    branches:
+      - research/v39r-canonical-reconstruction
+  workflow_dispatch:
+
+jobs:
+  characterize-v39-corrected:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
+
+      - name: Verify frozen preregistration and audit note
+        run: |
+          test -f docs/V39_DEVELOPMENT_PREREGISTRATION.md
+          test -f docs/V39_DEVELOPMENT_PREREGISTRATION_AMENDMENT_1.md
+          test -f docs/V39_IMPLEMENTATION_AUDIT_CORRECTION_1.md
+
+      - name: Re-run v0.39 invariant tests
+        run: pytest -q tests/test_financial_system_v39.py tests/test_mother_strategy_v39.py
+
+      - name: Compile corrected characterization runner
+        run: |
+          python -m py_compile scripts/run_v39_development_characterization.py
+          python -m py_compile scripts/run_v39_development_characterization_corrected.py
+
+      - name: Run audit-corrected frozen v0.39 characterization
+        run: |
+          python scripts/run_v39_development_characterization_corrected.py \
+            --output-dir results/v39_characterization_corrected
+
+      - name: Upload corrected v0.39 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v39-development-characterization-corrected
+          path: results/v39_characterization_corrected/
+          if-no-files-found: error
+          retention-days: 90
