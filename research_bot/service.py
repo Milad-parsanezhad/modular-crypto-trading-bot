@@ -10,21 +10,38 @@ from .event_competing_risk_v41 import preregistration_manifest_v41
 from .mother_strategy_v39 import mother_strategy_manifest_v39
 from .two_stage_hurdle_v40 import preregistration_manifest_v40
 
-
-SERVICE_VERSION = "1.0.0-rc2"
+SERVICE_VERSION = "1.0.0-rc3"
 RESEARCH_MODE = "RESEARCH_ONLY"
-LATEST_EXPERIMENT = "v0.41"
+LATEST_COMPLETED_EXPERIMENT = "v0.50"
+LATEST_COMPLETED_DECISION = "V50_NONOVERLAP_FAILURE_SUPPORTED"
+NEXT_RESEARCH_QUESTION = "v0.51 prospective overlap-conflict arbitration"
 MOTHER_STRATEGY = "v0.39"
 KRAKEN_STATE = "SEALED"
 PAPER_EXECUTION = False
 LIVE_EXECUTION = False
+CANONICAL_V50_RUN = 34707823108
+CANONICAL_V50_HEAD = "1dd0b1fe506fc51ceec4ff8934b77090f86b6cc2"
+CANONICAL_V50_ARTIFACT = 10302830689
+CANONICAL_V50_DIGEST = "sha256:da5813a8c031f9da6cc940fda942efc846ca536dbd952f4930584c30732373e9"
+
+
+def _truthy_env(name: str) -> bool:
+    return os.getenv(name, "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Fail closed at import/startup. A deployment cannot silently enable execution.
+if _truthy_env("LIVE_EXECUTION") or _truthy_env("PAPER_EXECUTION"):
+    raise RuntimeError(
+        "Execution firewall violation: LIVE_EXECUTION and PAPER_EXECUTION must remain false "
+        "for the v0.50 research deployment."
+    )
 
 app = FastAPI(
     title="Modular Crypto Trading Bot — Thesis Research API",
     version=SERVICE_VERSION,
     description=(
         "Fail-closed academic crypto research service. "
-        "PAPER and LIVE execution are disabled until an explicit scientific promotion gate authorizes them."
+        "No exchange-order endpoint is enabled; PAPER and LIVE execution are disabled."
     ),
 )
 
@@ -37,16 +54,43 @@ def _environment() -> str:
     return os.getenv("RAILWAY_ENVIRONMENT_NAME", "UNKNOWN")
 
 
+def _status_payload() -> dict:
+    return {
+        "principle": "Evidence Before Opinion",
+        "service_version": SERVICE_VERSION,
+        "mode": RESEARCH_MODE,
+        "mother_strategy": MOTHER_STRATEGY,
+        "latest_completed_experiment": LATEST_COMPLETED_EXPERIMENT,
+        "latest_completed_decision": LATEST_COMPLETED_DECISION,
+        "next_research_question": NEXT_RESEARCH_QUESTION,
+        "development_venues": ["coinex", "okx", "kucoin"],
+        "reserved_holdout": "kraken",
+        "kraken_holdout": KRAKEN_STATE,
+        "paper_execution": PAPER_EXECUTION,
+        "live_execution": LIVE_EXECUTION,
+        "v50_provenance": {
+            "workflow_run": CANONICAL_V50_RUN,
+            "scientific_head": CANONICAL_V50_HEAD,
+            "artifact_id": CANONICAL_V50_ARTIFACT,
+            "artifact_digest": CANONICAL_V50_DIGEST,
+        },
+        "git_commit": _git_commit(),
+        "environment": _environment(),
+        "warning": "Service availability is not profitability evidence or execution authorization.",
+    }
+
+
 @app.get("/")
 def root() -> dict:
     return {
         "service": "modular-crypto-research-bot",
         "version": SERVICE_VERSION,
         "mode": RESEARCH_MODE,
-        "mother_strategy": MOTHER_STRATEGY,
-        "latest_experiment": LATEST_EXPERIMENT,
+        "latest_completed_experiment": LATEST_COMPLETED_EXPERIMENT,
+        "latest_completed_decision": LATEST_COMPLETED_DECISION,
         "dashboard": "/dashboard",
         "docs": "/docs",
+        "health": "/health",
         "paper_execution": PAPER_EXECUTION,
         "live_execution": LIVE_EXECUTION,
         "kraken_holdout": KRAKEN_STATE,
@@ -60,6 +104,7 @@ def health() -> dict:
         "service": "modular-crypto-research-bot",
         "version": SERVICE_VERSION,
         "execution_mode": RESEARCH_MODE,
+        "latest_completed_experiment": LATEST_COMPLETED_EXPERIMENT,
         "paper_execution": PAPER_EXECUTION,
         "live_execution": LIVE_EXECUTION,
         "kraken_holdout": KRAKEN_STATE,
@@ -69,23 +114,23 @@ def health() -> dict:
 
 @app.get("/research/status")
 def research_status() -> dict:
+    return _status_payload()
+
+
+@app.get("/research/latest")
+def research_latest() -> dict:
     return {
-        "principle": "Evidence Before Opinion",
-        "version": SERVICE_VERSION,
-        "mode": RESEARCH_MODE,
-        "mother_strategy": MOTHER_STRATEGY,
-        "latest_completed_experiment": "v0.40",
-        "latest_completed_decision": "V40_DEVELOPMENT_REJECT_OR_INSUFFICIENT_EVIDENCE",
-        "current_experiment": LATEST_EXPERIMENT,
-        "current_hypothesis": "event-family-specific discrete-time competing risks",
-        "development_venues": ["coinex", "okx", "kucoin"],
-        "reserved_holdout": "kraken",
-        "kraken_holdout": KRAKEN_STATE,
-        "paper_execution": PAPER_EXECUTION,
-        "live_execution": LIVE_EXECUTION,
-        "git_commit": _git_commit(),
-        "environment": _environment(),
-        "warning": "Service availability and model predictions are not profitability evidence or execution authorization.",
+        "experiment": LATEST_COMPLETED_EXPERIMENT,
+        "decision": LATEST_COMPLETED_DECISION,
+        "finding": (
+            "The frozen earliest-first non-overlap stage satisfied the preregistered broad-harm "
+            "attribution rule in v0.50; alternative arbitration is not yet validated."
+        ),
+        "next_question": NEXT_RESEARCH_QUESTION,
+        "candidate_promotion_allowed": False,
+        "kraken_touched": False,
+        "paper_execution": False,
+        "live_execution": False,
     }
 
 
@@ -98,7 +143,7 @@ def research_manifest(version: str) -> dict:
     }
     fn = manifests.get(version.lower())
     if fn is None:
-        raise HTTPException(status_code=404, detail="Unknown research version. Use v39, v40 or v41.")
+        raise HTTPException(status_code=404, detail="Executable manifests currently exposed for v39, v40 and v41.")
     return fn()
 
 
@@ -107,10 +152,7 @@ def evaluate_forecast(payload: dict) -> dict:
     del payload
     raise HTTPException(
         status_code=423,
-        detail=(
-            "Decision/execution endpoint is locked by the current thesis governance. "
-            "Run frozen characterization through the CLI; PAPER/LIVE remain disabled."
-        ),
+        detail="Decision/execution endpoint is locked by thesis governance; research-only deployment.",
     )
 
 
@@ -121,16 +163,13 @@ def paper_status() -> dict:
         "paper_execution_enabled": False,
         "live_execution": False,
         "kraken_holdout": KRAKEN_STATE,
-        "required_next_step": "development qualification before any external holdout or paper promotion",
+        "required_next_step": NEXT_RESEARCH_QUESTION,
     }
 
 
 @app.post("/paper/run-once")
 def paper_run_once() -> dict:
-    raise HTTPException(
-        status_code=423,
-        detail="Forward PAPER execution is disabled until an explicit promotion gate is passed.",
-    )
+    raise HTTPException(status_code=423, detail="PAPER execution is disabled by the current scientific gate.")
 
 
 @app.get("/paper/observations")
@@ -146,41 +185,12 @@ def paper_fills() -> dict:
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard() -> str:
     return r'''<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Thesis Crypto Research Bot</title>
-<style>
-body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f5f7fa;color:#17202a}
-header{background:#111827;color:white;padding:22px 5vw}main{max-width:1100px;margin:24px auto;padding:0 20px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
-.card{background:white;border:1px solid #dfe5ec;border-radius:10px;padding:16px;box-shadow:0 1px 3px #0001}
-h1{font-size:22px;margin:0 0 6px}h2{font-size:16px;margin:0 0 12px}.metric{font-size:22px;font-weight:700}
-.muted{color:#667085;font-size:13px}.ok{color:#067647}.locked{color:#b54708}.warn{background:#fff7ed;padding:12px;border-left:4px solid #f59e0b;margin:16px 0}
-code{background:#f2f4f7;padding:2px 6px;border-radius:5px}
-</style>
-</head>
-<body>
-<header><h1>Modular Crypto Trading Bot — Thesis Research Dashboard</h1><div style="color:#cbd5e1">Evidence Before Opinion · fail-closed execution</div></header>
-<main>
-<div class="warn">This service is research-only. PAPER and LIVE execution are locked until a preregistered scientific promotion gate passes.</div>
-<div class="grid">
-<div class="card"><h2>Service</h2><div id="health" class="metric ok">…</div><div id="version" class="muted"></div></div>
-<div class="card"><h2>Mode</h2><div id="mode" class="metric">…</div><div class="muted">No exchange order endpoint is enabled.</div></div>
-<div class="card"><h2>Current experiment</h2><div id="experiment" class="metric">…</div><div class="muted">Event-specific competing risks</div></div>
-<div class="card"><h2>Kraken holdout</h2><div id="kraken" class="metric locked">…</div><div class="muted">Untouched until development qualification.</div></div>
-</div>
-<div class="card" style="margin-top:16px"><h2>Research status</h2><pre id="research" style="white-space:pre-wrap">…</pre></div>
-</main>
-<script>
-async function refresh(){
-  const [h,r]=await Promise.all(['/health','/research/status'].map(u=>fetch(u).then(x=>x.json())));
-  health.textContent=h.status; version.textContent=h.version; mode.textContent=h.execution_mode;
-  experiment.textContent=r.current_experiment; kraken.textContent=r.kraken_holdout;
-  research.textContent=JSON.stringify(r,null,2);
-}
-refresh(); setInterval(refresh,30000);
-</script>
-</body>
-</html>'''
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Thesis Crypto Research Bot</title><style>
+body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f5f7fa;color:#17202a}header{background:#111827;color:white;padding:22px 5vw}main{max-width:1100px;margin:24px auto;padding:0 20px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}.card{background:white;border:1px solid #dfe5ec;border-radius:10px;padding:16px;box-shadow:0 1px 3px #0001}h1{font-size:22px;margin:0 0 6px}h2{font-size:16px;margin:0 0 12px}.metric{font-size:21px;font-weight:700}.muted{color:#667085;font-size:13px}.ok{color:#067647}.locked{color:#b54708}.warn{background:#fff7ed;padding:12px;border-left:4px solid #f59e0b;margin:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style></head>
+<body><header><h1>Modular Crypto Trading Bot — Thesis Research Dashboard</h1><div style="color:#cbd5e1">v0.50 · Evidence Before Opinion · fail-closed</div></header><main>
+<div class="warn">Research/monitoring only. LIVE=false · PAPER=false · Kraken SEALED. No exchange-order endpoint is enabled.</div>
+<div class="grid"><div class="card"><h2>Service</h2><div id="health" class="metric ok">…</div><div id="version" class="muted"></div></div><div class="card"><h2>Mode</h2><div id="mode" class="metric">…</div></div><div class="card"><h2>Latest evidence</h2><div id="experiment" class="metric">…</div><div id="decision" class="muted"></div></div><div class="card"><h2>Kraken</h2><div id="kraken" class="metric locked">…</div></div></div>
+<div class="card" style="margin-top:16px"><h2>Research status</h2><pre id="research">…</pre></div></main><script>
+async function refresh(){const [h,r]=await Promise.all(['/health','/research/status'].map(u=>fetch(u).then(x=>x.json())));health.textContent=h.status;version.textContent=h.version;mode.textContent=h.execution_mode;experiment.textContent=r.latest_completed_experiment;decision.textContent=r.latest_completed_decision;kraken.textContent=r.kraken_holdout;research.textContent=JSON.stringify(r,null,2)}refresh();setInterval(refresh,30000);
+</script></body></html>'''
