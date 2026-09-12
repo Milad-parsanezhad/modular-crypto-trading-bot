@@ -49,7 +49,7 @@ def test_sampling_flags_do_not_change_before_future_perturbation():
     changed = original.copy()
     cut = 370
     changed.loc[cut:, "close"] *= np.linspace(1.0, 2.5, len(changed) - cut)
-    changed.loc[cut:, "open"] = np.r_[changed.loc[cut - 1, "close"], changed.loc[cut:-2, "close"].to_numpy()]
+    changed.loc[cut:, "open"] = changed["close"].iloc[cut - 1:-1].to_numpy()
     changed.loc[cut:, "high"] = np.maximum(changed.loc[cut:, "open"], changed.loc[cut:, "close"]) * 1.01
     changed.loc[cut:, "low"] = np.minimum(changed.loc[cut:, "open"], changed.loc[cut:, "close"]) * 0.99
 
