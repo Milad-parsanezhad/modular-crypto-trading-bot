@@ -6,7 +6,9 @@ on:
       - 'research_bot/economic_state_v46.py'
       - 'scripts/run_v46_economic_state_representation.py'
       - 'tests/test_economic_state_v46.py'
+      - 'tests/test_v46_prereg_lineage.py'
       - 'docs/V46_ECONOMIC_STATE_REPRESENTATION_PREREGISTRATION.md'
+      - 'docs/V46_EXECUTION_NOTE.md'
       - '.github/workflows/v46-economic-state-representation.yml'
   workflow_dispatch:
 
@@ -31,7 +33,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Assert checkout and preregistration lineage
         shell: bash
@@ -58,7 +60,7 @@ jobs:
           pip check
 
       - name: Run frozen v0.46 unit tests
-        run: pytest -q tests/test_economic_state_v46.py
+        run: pytest -q tests/test_economic_state_v46.py tests/test_v46_prereg_lineage.py
 
       - name: Download exact v0.44 prepared artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
