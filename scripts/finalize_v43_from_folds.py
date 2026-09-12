@@ -121,7 +121,6 @@ def main() -> None:
             "gates": v42_gate_from_metrics(metrics),
         }
 
-    # Fold economic stability and training-only naive skill benchmark.
     fold_expectancies: list[float] = []
     target_skill: list[float] = []
     stop_skill: list[float] = []
@@ -144,9 +143,14 @@ def main() -> None:
         and float(np.median(stop_skill)) > 0.0
     )
     fold_gate = positive_fold_fraction >= 0.60
+
+    # Robustness must be measured BEFORE the agreement filter. Measuring it on
+    # executed trades is tautological because selected_model already requires
+    # >=2/3 perturbation agreement. Use all median-admissible rows instead.
+    median_admissible = oos[oos["selected_v41"].astype(bool)].copy() if "selected_v41" in oos else oos.iloc[0:0]
     perturbation_stability = (
-        float((pd.to_numeric(executed["perturbation_agreement_v43"], errors="coerce") >= (2.0 / 3.0)).mean())
-        if not executed.empty else 0.0
+        float((pd.to_numeric(median_admissible["perturbation_agreement_v43"], errors="coerce") >= (2.0 / 3.0)).mean())
+        if not median_admissible.empty else 0.0
     )
     perturbation_gate = perturbation_stability >= 0.60
     venue_gate = all(bool(venue_results[v]["gates"]["venue_pass"]) for v in V43_DEVELOPMENT_VENUES)
@@ -165,6 +169,7 @@ def main() -> None:
     summary = {
         "candidate": CANDIDATE,
         "oos_events": int(len(oos)),
+        "median_admissible_events": int(len(median_admissible)),
         "model_selected_events": int(len(selected)),
         "nonoverlap_events": int(len(realized)),
         "financially_executed_events": int(len(executed)),
@@ -176,7 +181,7 @@ def main() -> None:
         "stop_skill_positive_fold_fraction": stop_skill_positive_folds,
         "median_target_brier_skill": float(np.median(target_skill)),
         "median_stop_brier_skill": float(np.median(stop_skill)),
-        "perturbation_stable_executed_fraction": perturbation_stability,
+        "perturbation_stable_median_admissible_fraction": perturbation_stability,
         "all_venue_gates_pass": venue_gate,
         "fold_gate_pass": fold_gate,
         "forecast_skill_gate_pass": skill_gate,
@@ -202,6 +207,7 @@ def main() -> None:
         "live_execution": False,
         "post_result_threshold_relaxation": False,
         "post_result_asset_pruning": False,
+        "perturbation_gate_basis": "median_admissible_pre_agreement_rows",
     }
     (outdir / "decision_v43.json").write_text(json.dumps(base._jsonable(decision), indent=2, sort_keys=True), encoding="utf-8")
     print(json.dumps(base._jsonable(decision), indent=2, sort_keys=True))
