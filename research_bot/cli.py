@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from .breadth_cluster_v42 import preregistration_manifest_v42
 from .event_competing_risk_v41 import preregistration_manifest_v41
 from .mother_strategy_v39 import build_mother_features_v39, mother_strategy_manifest_v39
 from .two_stage_hurdle_v40 import preregistration_manifest_v40
@@ -25,17 +26,19 @@ def cmd_doctor(_: argparse.Namespace) -> int:
         "v39": mother_strategy_manifest_v39(),
         "v40": preregistration_manifest_v40(),
         "v41": preregistration_manifest_v41(),
+        "v42": preregistration_manifest_v42(),
     }
     assert manifests["v39"]["kraken_holdout"] == "SEALED"
     assert manifests["v39"]["paper_execution"] is False
     assert manifests["v39"]["live_execution"] is False
-    assert manifests["v40"]["kraken_touched"] is False
-    assert manifests["v41"]["kraken_touched"] is False
-    assert manifests["v40"]["paper_execution"] is False
-    assert manifests["v41"]["paper_execution"] is False
-    assert manifests["v40"]["live_execution"] is False
-    assert manifests["v41"]["live_execution"] is False
-    _json({"status": "PASS", "execution": "RESEARCH_ONLY", "kraken": "SEALED"})
+    for version in ("v40", "v41", "v42"):
+        assert manifests[version]["kraken_touched"] is False
+        assert manifests[version]["paper_execution"] is False
+        assert manifests[version]["live_execution"] is False
+    assert manifests["v42"]["reserved_holdout"] == "kraken"
+    assert manifests["v42"]["threshold_relaxation"] is False
+    assert manifests["v42"]["family_pruning"] is False
+    _json({"status": "PASS", "execution": "RESEARCH_ONLY", "kraken": "SEALED", "latest_experiment": "v0.42"})
     return 0
 
 
@@ -44,6 +47,7 @@ def cmd_manifest(args: argparse.Namespace) -> int:
         "v39": mother_strategy_manifest_v39,
         "v40": preregistration_manifest_v40,
         "v41": preregistration_manifest_v41,
+        "v42": preregistration_manifest_v42,
     }
     _json(manifests[args.version]())
     return 0
@@ -54,13 +58,14 @@ def cmd_status(_: argparse.Namespace) -> int:
         "v39": ROOT / "docs" / "V39_RESULTS_2026-09-12.md",
         "v40": ROOT / "docs" / "V40_RESULTS_2026-09-12.md",
         "v41": ROOT / "docs" / "V41_RESULTS_2026-09-12.md",
+        "v42": ROOT / "docs" / "V42_RESULTS_2026-09-12.md",
     }
     _json(
         {
             "package": "modular-crypto-research-bot",
             "mode": "RESEARCH_ONLY",
             "mother_strategy": "v0.39",
-            "latest_experiment": "v0.41",
+            "latest_experiment": "v0.42",
             "result_documents": {k: v.exists() for k, v in result_files.items()},
             "paper_execution": False,
             "live_execution": False,
@@ -85,6 +90,7 @@ def cmd_characterize(args: argparse.Namespace) -> int:
         "v39": ROOT / "scripts" / "run_v39_development_characterization_corrected.py",
         "v40": ROOT / "scripts" / "run_v40_two_stage_characterization.py",
         "v41": ROOT / "scripts" / "run_v41_competing_risk_characterization_fast.py",
+        "v42": ROOT / "scripts" / "run_v42_breadth_cluster_characterization.py",
     }
     script = scripts[args.version]
     if not script.exists():
@@ -104,7 +110,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.set_defaults(func=cmd_doctor)
 
     manifest = sub.add_parser("manifest", help="print a frozen research manifest")
-    manifest.add_argument("--version", choices=("v39", "v40", "v41"), default="v41")
+    manifest.add_argument("--version", choices=("v39", "v40", "v41", "v42"), default="v42")
     manifest.set_defaults(func=cmd_manifest)
 
     status = sub.add_parser("status", help="print current research/execution state")
@@ -116,7 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
     features.set_defaults(func=cmd_features)
 
     characterize = sub.add_parser("characterize", help="run a frozen development characterization")
-    characterize.add_argument("--version", choices=("v39", "v40", "v41"), default="v41")
+    characterize.add_argument("--version", choices=("v39", "v40", "v41", "v42"), default="v42")
     characterize.add_argument("--output-dir", required=True)
     characterize.set_defaults(func=cmd_characterize)
     return p
