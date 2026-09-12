@@ -32,8 +32,8 @@ jobs:
       - name: Verify frozen preregistration exists
         run: test -f docs/V42_BREADTH_CLUSTER_PREREGISTRATION.md
 
-      - name: Re-run v0.42 invariants
-        run: pytest -q tests/test_breadth_cluster_v42.py tests/test_v41_vectorized_equivalence.py
+      - name: Re-run v0.42 invariants and cache equivalence
+        run: pytest -q tests/test_breadth_cluster_v42.py tests/test_v41_vectorized_equivalence.py tests/test_v42_cache_equivalence.py
 
       - name: Compile frozen and optimized runners
         run: |
