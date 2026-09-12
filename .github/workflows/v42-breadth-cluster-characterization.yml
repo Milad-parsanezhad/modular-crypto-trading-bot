@@ -1,0 +1,53 @@
+name: v42 Breadth Cluster Development Characterization
+
+on:
+  pull_request:
+    branches:
+      - research/v41-event-competing-risk
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  characterize-v42:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
+
+      - name: Verify frozen preregistration exists
+        run: test -f docs/V42_BREADTH_CLUSTER_PREREGISTRATION.md
+
+      - name: Re-run v0.42 invariants
+        run: pytest -q tests/test_breadth_cluster_v42.py tests/test_v41_vectorized_equivalence.py
+
+      - name: Compile characterization runner
+        run: python -m py_compile scripts/run_v42_breadth_cluster_characterization.py
+
+      - name: Run frozen v0.42 development characterization
+        run: |
+          python scripts/run_v42_breadth_cluster_characterization.py \
+            --output-dir results/v42_breadth_cluster
+
+      - name: Upload v0.42 development evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v42-breadth-cluster-characterization
+          path: results/v42_breadth_cluster/
+          if-no-files-found: error
+          retention-days: 90
