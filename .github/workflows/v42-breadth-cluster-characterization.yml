@@ -11,42 +11,113 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  characterize-v42:
+  prepare-v42:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install project
         run: |
           python -m pip install --upgrade pip
           pip install -e .
           pip install pytest
-
-      - name: Verify frozen preregistration exists
-        run: test -f docs/V42_BREADTH_CLUSTER_PREREGISTRATION.md
-
-      - name: Re-run v0.42 invariants and cache equivalence
-        run: pytest -q tests/test_breadth_cluster_v42.py tests/test_v41_vectorized_equivalence.py tests/test_v42_cache_equivalence.py
-
-      - name: Compile frozen and optimized runners
+      - name: Verify frozen preregistration and execution equivalence
         run: |
+          test -f docs/V42_BREADTH_CLUSTER_PREREGISTRATION.md
+          pytest -q tests/test_breadth_cluster_v42.py tests/test_v41_vectorized_equivalence.py tests/test_v42_cache_equivalence.py
+      - name: Compile checkpointed runners
+        run: |
+          python -m py_compile scripts/prepare_v42_breadth_data.py
+          python -m py_compile scripts/run_v42_fold_from_prepared.py
+          python -m py_compile scripts/finalize_v42_from_folds.py
           python -m py_compile scripts/run_v42_breadth_cluster_characterization.py
           python -m py_compile scripts/run_v42_breadth_cluster_characterization_fast.py
-
-      - name: Run frozen v0.42 development characterization via equivalent cache path
+      - name: Prepare frozen v0.42 data and folds
         run: |
-          python scripts/run_v42_breadth_cluster_characterization_fast.py \
-            --output-dir results/v42_breadth_cluster
+          python scripts/prepare_v42_breadth_data.py --output-dir work/prepared
+      - name: Upload prepared checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: v42-prepared-data
+          path: work/prepared/
+          if-no-files-found: error
+          retention-days: 7
 
-      - name: Upload v0.42 development evidence
-        if: always()
+  fold-v42:
+    needs: prepare-v42
+    strategy:
+      fail-fast: false
+      matrix:
+        fold: [1, 2, 3, 4, 5]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: Download prepared checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: v42-prepared-data
+          path: work/prepared
+      - name: Run frozen fold ${{ matrix.fold }}
+        run: |
+          python scripts/run_v42_fold_from_prepared.py \
+            --input-dir work/prepared \
+            --fold ${{ matrix.fold }} \
+            --output-dir work/fold
+      - name: Upload fold ${{ matrix.fold }} evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v42-fold-${{ matrix.fold }}
+          path: work/fold/
+          if-no-files-found: error
+          retention-days: 7
+
+  finalize-v42:
+    needs: [prepare-v42, fold-v42]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: Download prepared checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: v42-prepared-data
+          path: work/all
+      - name: Download all fold evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: v42-fold-*
+          path: work/all
+          merge-multiple: true
+      - name: Finalize frozen v0.42 decision
+        run: |
+          python scripts/finalize_v42_from_folds.py \
+            --input-dir work/all \
+            --output-dir results/v42_breadth_cluster
+      - name: Upload canonical v0.42 development evidence
         uses: actions/upload-artifact@v4
         with:
           name: v42-breadth-cluster-characterization
