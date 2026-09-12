@@ -1,0 +1,278 @@
+name: v44 Information-Driven Sampling Development Characterization
+
+on:
+  pull_request:
+    branches:
+      - research/v44-information-driven-sampling
+    paths:
+      - "scripts/prepare_v44_information_sampling_data.py"
+      - "scripts/run_v44_fold_from_prepared.py"
+      - "scripts/finalize_v44_from_folds.py"
+      - "tests/test_v44_empirical_contract.py"
+      - "research_bot/information_sampling_v44.py"
+      - "docs/V44_INFORMATION_DRIVEN_SAMPLING_PREREGISTRATION.md"
+      - ".github/workflows/v44-information-sampling-characterization.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  WORKFLOW_RUN_ID: ${{ github.run_id }}
+  EVENT_NAME: ${{ github.event_name }}
+
+jobs:
+  prepare-v44:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - name: Checkout exact scientific head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Assert checkout provenance
+        run: |
+          set -euo pipefail
+          ACTUAL=$(git rev-parse HEAD)
+          echo "expected=$EXPECTED_HEAD_SHA actual=$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED_HEAD_SHA"
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install research package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
+
+      - name: Verify frozen lineage and empirical contract
+        run: |
+          set -euo pipefail
+          test -f docs/V43_RESULTS_2026-09-12.md
+          test -f docs/V44_INFORMATION_DRIVEN_SAMPLING_PREREGISTRATION.md
+          pytest -q \
+            tests/test_information_sampling_v44.py \
+            tests/test_v44_empirical_contract.py \
+            tests/test_asset_crossvenue_v43.py \
+            tests/test_v41_vectorized_equivalence.py
+
+      - name: Compile frozen v0.44 pipeline
+        run: |
+          python -m py_compile research_bot/information_sampling_v44.py
+          python -m py_compile scripts/prepare_v44_information_sampling_data.py
+          python -m py_compile scripts/run_v44_fold_from_prepared.py
+          python -m py_compile scripts/finalize_v44_from_folds.py
+
+      - name: Verify fail-closed scientific manifest
+        run: |
+          python - <<'PY'
+          from research_bot.information_sampling_v44 import preregistration_manifest_v44
+          m = preregistration_manifest_v44()
+          assert m['reserved_holdout'] == 'kraken'
+          assert m['kraken_touched'] is False
+          assert m['paper_execution'] is False
+          assert m['live_execution'] is False
+          assert m['threshold_relaxation'] is False
+          assert m['outcome_based_variant_tuning'] is False
+          assert m['outcome_based_asset_pruning'] is False
+          assert m['transformer_or_rl_added'] is False
+          assert m['true_tick_volume_dollar_bars_claimed'] is False
+          assert m['variants_in_frozen_order'] == [
+              'S0_CLOCK_MOTHER_BASELINE',
+              'S1_CUSUM_LAGGED_VOL',
+              'S2_DIRECTIONAL_CHANGE_LAGGED_ATR',
+          ]
+          PY
+
+      - name: Prepare frozen v0.44 data and common folds
+        run: |
+          python scripts/prepare_v44_information_sampling_data.py \
+            --output-dir work/prepared
+
+      - name: Write empirical execution provenance
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, platform, subprocess
+          from importlib.metadata import version
+          from pathlib import Path
+
+          prepared = Path('work/prepared')
+          prereg = Path('docs/V44_INFORMATION_DRIVEN_SAMPLING_PREREGISTRATION.md')
+          hashes = json.loads((prepared / 'prepared_hashes_v44.json').read_text(encoding='utf-8'))
+          actual = subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip()
+          payload = {
+              'workflow_run_id': os.environ['WORKFLOW_RUN_ID'],
+              'event_name': os.environ['EVENT_NAME'],
+              'event_head_sha': os.environ['EXPECTED_HEAD_SHA'],
+              'checked_out_sha': actual,
+              'python': platform.python_version(),
+              'package': version('modular-crypto-research-bot'),
+              'numpy': version('numpy'),
+              'pandas': version('pandas'),
+              'scikit_learn': version('scikit-learn'),
+              'ccxt': version('ccxt'),
+              'preregistration_sha256': hashlib.sha256(prereg.read_bytes()).hexdigest(),
+              'prepared_event_table_sha256': hashes['events_v44_pickle_sha256'],
+              'fold_index_sha256': hashes['fold_index_v44_sha256'],
+              'github_actions': {
+                  'checkout': '11d5960a326750d5838078e36cf38b85af677262',
+                  'setup_python': 'a26af69be951a213d495a4c3e4e4022e16d87065',
+                  'download_artifact': 'd3f86a106a0bac45b974a628896c90dbdf5c8093',
+                  'upload_artifact': 'ea165f8d65b6e75b540449e92b4886f43607fa02',
+              },
+              'variants': [
+                  'S0_CLOCK_MOTHER_BASELINE',
+                  'S1_CUSUM_LAGGED_VOL',
+                  'S2_DIRECTIONAL_CHANGE_LAGGED_ATR',
+              ],
+              'common_fold_source': 'S0_CLOCK_MOTHER_BASELINE',
+              'kraken_touched': False,
+              'paper_execution': False,
+              'live_execution': False,
+          }
+          assert payload['checked_out_sha'] == payload['event_head_sha']
+          (prepared / 'execution_provenance.json').write_text(
+              json.dumps(payload, indent=2, sort_keys=True), encoding='utf-8'
+          )
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload prepared v0.44 checkpoint
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: v44-prepared-data
+          path: work/prepared/
+          if-no-files-found: error
+          retention-days: 7
+
+  fold-v44:
+    needs: prepare-v44
+    strategy:
+      fail-fast: false
+      matrix:
+        fold: [1, 2, 3, 4, 5]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact scientific head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Assert checkout provenance
+        run: |
+          set -euo pipefail
+          ACTUAL=$(git rev-parse HEAD)
+          echo "expected=$EXPECTED_HEAD_SHA actual=$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED_HEAD_SHA"
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install research package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Download prepared checkpoint
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: v44-prepared-data
+          path: work/prepared
+
+      - name: Run frozen common fold ${{ matrix.fold }}
+        run: |
+          python scripts/run_v44_fold_from_prepared.py \
+            --input-dir work/prepared \
+            --fold ${{ matrix.fold }} \
+            --output-dir work/fold
+
+      - name: Upload fold ${{ matrix.fold }} evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: v44-fold-${{ matrix.fold }}
+          path: work/fold/
+          if-no-files-found: error
+          retention-days: 7
+
+  finalize-v44:
+    needs: [prepare-v44, fold-v44]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout exact scientific head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Assert checkout provenance
+        run: |
+          set -euo pipefail
+          ACTUAL=$(git rev-parse HEAD)
+          echo "expected=$EXPECTED_HEAD_SHA actual=$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED_HEAD_SHA"
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install research package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Download prepared checkpoint
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: v44-prepared-data
+          path: work/all
+
+      - name: Download all fold evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: v44-fold-*
+          path: work/all
+          merge-multiple: true
+
+      - name: Finalize frozen v0.44 decision
+        run: |
+          python scripts/finalize_v44_from_folds.py \
+            --input-dir work/all \
+            --output-dir results/v44_information_sampling
+
+      - name: Verify canonical evidence completeness
+        run: |
+          set -euo pipefail
+          test -f results/v44_information_sampling/decision_v44.json
+          test -f results/v44_information_sampling/candidate_summary_v44.csv
+          test -f results/v44_information_sampling/oos_predictions_v44.csv.gz
+          test -f results/v44_information_sampling/provenance/execution_provenance.json
+          test -f results/v44_information_sampling/provenance/prepared_hashes_v44.json
+          test -f results/v44_information_sampling/provenance/fold_index_v44.csv
+          test -f results/v44_information_sampling/provenance/data_quality_manifest_v44.csv
+
+      - name: Upload canonical v0.44 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: v44-information-driven-sampling-characterization
+          path: results/v44_information_sampling/
+          if-no-files-found: error
+          retention-days: 90
