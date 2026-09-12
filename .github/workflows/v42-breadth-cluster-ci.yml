@@ -33,10 +33,13 @@ jobs:
         run: |
           pytest -q tests/test_breadth_cluster_v42.py tests/test_v41_vectorized_equivalence.py tests/test_v42_cache_equivalence.py tests/test_cli_v41.py
 
-      - name: Compile frozen and optimized v0.42 runners
+      - name: Compile all frozen and checkpointed v0.42 runners
         run: |
           python -m py_compile scripts/run_v42_breadth_cluster_characterization.py
           python -m py_compile scripts/run_v42_breadth_cluster_characterization_fast.py
+          python -m py_compile scripts/prepare_v42_breadth_data.py
+          python -m py_compile scripts/run_v42_fold_from_prepared.py
+          python -m py_compile scripts/finalize_v42_from_folds.py
 
       - name: Run bot doctor
         run: modular-crypto-bot doctor
