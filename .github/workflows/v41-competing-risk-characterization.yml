@@ -1,0 +1,51 @@
+name: v41 Competing Risk Development Characterization
+
+on:
+  pull_request:
+    branches:
+      - research/v40-two-stage-hurdle
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  characterize-v41:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
+
+      - name: Verify frozen preregistration exists
+        run: test -f docs/V41_EVENT_COMPETING_RISK_PREREGISTRATION.md
+
+      - name: Re-run v0.41 invariants and vectorization equivalence
+        run: pytest -q tests/test_event_competing_risk_v41.py tests/test_v41_vectorized_equivalence.py tests/test_cli_v41.py
+
+      - name: Compile characterization runners
+        run: |
+          python -m py_compile scripts/run_v41_competing_risk_characterization.py
+          python -m py_compile scripts/run_v41_competing_risk_characterization_fast.py
+
+      - name: Run frozen v0.41 development characterization
+        run: python scripts/run_v41_competing_risk_characterization_fast.py --output-dir results/v41_characterization
+
+      - name: Upload v0.41 development evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v41-event-competing-risk-characterization
+          path: results/v41_characterization/
+          retention-days: 90

@@ -1,122 +1,218 @@
-# Modular Crypto Trading Bot — Evidence-Driven Research Platform
+# Modular Crypto Trading Bot — Evidence-Driven Thesis Research System
 
-Academic, modular cryptocurrency trading research platform for building and validating a multi-market intelligent trading system.
+Private academic cryptocurrency trading-research repository for a causal, reproducible and fail-closed thesis bot.
 
-> **Current branch:** `research-v08-advanced-integration`  
-> **Safety:** `LIVE` execution is disabled by default.  
-> **Scientific status:** this repository does **not** claim a validated profitable strategy. Negative OOS results are preserved.
+> **Current research line:** `v0.41` (`research/v41-event-competing-risk`)  
+> **Mother strategy:** `v0.39`  
+> **Execution state:** `RESEARCH_ONLY`  
+> **Kraken holdout:** `SEALED`  
+> **PAPER:** disabled  
+> **LIVE:** disabled  
+> **Scientific status:** no validated profitable strategy is claimed unless every frozen development/holdout gate passes.
 
-## Core research contract
+## Core principle
 
-**Evidence Before Opinion.** A trading claim is not accepted unless it has point-in-time data, provenance, reproducible artifacts, realistic costs and out-of-sample validation.
+**Evidence Before Opinion.**
 
-The platform now follows this path:
+A strategy claim is admissible only when it is based on causal point-in-time inputs, reproducible code/artifacts, realistic costs, purged out-of-sample evaluation, uncertainty accounting and explicit promotion gates. Technical CI success never equals alpha evidence.
 
-**Dynamic Universe → Eligibility/Coverage → Point-in-Time Features → Alpha/Ranking → Regime → Model Tournament → Cost/Uncertainty-Aware Abstention → Independent Risk → Cost-Aware Execution → Robust Validation → Paper Trading → Testnet → Live-Readiness Audit**
+## Current end-to-end architecture
 
-Ichimoku is a candidate feature family and must earn its place through ablation. RL/Transformers/LLMs are challengers, not default winners.
+```text
+Market data
+  -> causal feature engineering / robust normalization
+  -> independent mother-strategy engines
+       ICT
+       SMC
+       Ichimoku
+       Al Brooks-inspired price action
+       higher-timeframe context
+  -> broad mother-event pool
+  -> event-family / side / regime representation
+  -> statistical learning layer
+  -> expected post-cost R + uncertainty + duration/path information
+  -> independent financial risk governor
+  -> portfolio admission / drawdown firewall
+  -> frozen OOS characterization
+  -> evidence artifacts / thesis results
+```
 
-## What exists today
+The strategy engines are intentionally independent. The system does **not** require a brittle hard conjunction such as “6 of 7 conditions.” Their outputs become causal features/events and must earn predictive value out of sample.
 
-### Existing research engine (v0.1–v0.6)
-- public OHLCV and derivatives ingestion,
-- BTC/USDT 4h real-market baselines,
-- leakage-safe technical/liquidity features,
-- Ichimoku candidate features,
-- CUSUM + triple-barrier replication,
-- purged/walk-forward validation,
-- funding/basis/order-flow research,
-- regime-conditional ablations,
-- cross-sectional research prototype,
-- CPCV/PBO/Deflated-Sharpe diagnostics,
-- GitHub Actions and Colab notebooks.
+## Research lineage that matters now
 
-### v0.8 advanced research integration
-- `research_bot/contracts.py` — evidence/status/decision/execution contracts,
-- `research_bot/point_in_time.py` — availability-time as-of joins for on-chain/news/fundamental data,
-- `research_bot/universe.py` — dynamic eligibility, rejection reasons, deterministic dedup and measured coverage,
-- `research_bot/ichimoku_advanced.py` — leakage-safe Ichimoku state and algorithmic triangle-under-Kumo candidate detector,
-- `research_bot/decision.py` — Net-Alpha decision engine with cost/risk/uncertainty-aware abstention,
-- `research_bot/risk.py` — independent drawdown/exposure/liquidity/turnover/CVaR risk gate and kill switch,
-- `research_bot/execution.py` — guarded PAPER/BACKTEST/TESTNET simulator with fees, slippage, partial fills and idempotency,
-- `research_bot/orchestrator.py` — forecast → decision → risk → execution integration,
-- `research_bot/reproducibility.py` — dataset fingerprinting and experiment manifests,
-- richer backtest diagnostics including VaR/CVaR, profit factor, exposure, turnover and explicit/funding costs.
+### v0.39 — Robust mother strategy and financial system
 
-See `docs/V08_ADVANCED_RESEARCH_INTEGRATION.md` for the research-to-code mapping.
+Reconstructed and integrated:
 
-## Scientific findings already recorded
+- ICT: liquidity sweep, MSS/CHoCH/BOS, displacement and premium/discount context;
+- SMC: structure, FVG, order-block mitigation and supply/demand context;
+- Ichimoku: Kumo, Tenkan/Kijun, Kijun slope, breakout and pullback context;
+- Al Brooks-inspired engine: Always-In, trend/range, breakout/failed breakout, H1/H2, L1/L2, wedge, micro-double, signal-bar, follow-through and measured-move context;
+- causal higher-timeframe context;
+- robust rolling normalization;
+- model complexity ladder and fixed-seed policy;
+- independent risk governor and experiment loop guard.
 
-The project has intentionally retained negative findings: a simple directional ML baseline did not outperform its benchmark in the initial real-market window, and CUSUM + triple-barrier labelling did not create alpha by itself. These findings changed the project toward cross-sectional ranking, derivatives/order-flow evidence, stronger validation and explicit execution/risk gates.
+v0.39 repaired the v0.39R zero-event problem but did **not** produce a development-qualified alpha model.
+
+### v0.40 — Two-stage hurdle experiment
+
+Separated:
+
+1. probability an event has positive post-cost R;
+2. positive payoff magnitude;
+3. loss magnitude;
+4. holding duration;
+5. regime-aware conformal uncertainty.
+
+Result: the current pooled mother-event representation did not show useful OOS Stage-1 discrimination. This result is preserved as negative scientific evidence in `docs/V40_RESULTS_2026-09-12.md`.
+
+### v0.41 — Event-specific competing-risk experiment
+
+Current hypothesis:
+
+- freeze semantic event families;
+- model LONG and SHORT separately;
+- estimate discrete-time cause-specific TARGET and STOP hazards;
+- treat TIME as right-censoring to the frozen horizon;
+- reconstruct cumulative incidence for target/stop/timeout;
+- use family-aware conformal expected-R bounds;
+- admit capital only when the conservative lower expected-R is positive and target probability exceeds stop probability.
+
+This experiment does **not** relax v0.40 thresholds after seeing outcomes and does not touch Kraken.
+
+## Financial governance
+
+Frozen core limits inherited by the current research line:
+
+- base stop-risk per trade: **0.25% equity**;
+- max stop-risk per trade: **0.50%**;
+- aggregate open stop-risk cap: **2.00%**;
+- same-direction open stop-risk cap: **1.50%**;
+- max nominal asset weight: **35%**;
+- max portfolio gross: **70%**;
+- drawdown risk reduction around **2.0%** and **3.5%**;
+- hard drawdown firewall: **5.0%**;
+- base round-trip cost: **24 bps**;
+- stress round-trip cost: **36 bps**;
+- no martingale;
+- no averaging down;
+- no revenge-risk increase;
+- no best-seed cherry-picking;
+- no post-result threshold rescue under the same experiment ID.
+
+The predictive model never directly owns capital. Capital is admitted only after the independent financial governor accepts the prediction, uncertainty and portfolio state.
 
 ## Install
 
 ```bash
-pip install -e ".[dev]"
-pytest -q
+python -m pip install -e ".[dev]"
 ```
 
-## v0.8 engineering smoke test
+Run the fail-closed health check:
 
 ```bash
-python scripts/run_research_core_v08.py --output-dir artifacts/v08
+modular-crypto-bot doctor
 ```
 
-Without `--input-csv`, this command uses deterministic **synthetic smoke data only to test engineering contracts**. Synthetic results are never valid thesis performance evidence.
+Expected safety state includes:
 
-With a real OHLCV CSV:
+```text
+RESEARCH_ONLY
+Kraken = SEALED
+PAPER = false
+LIVE = false
+```
+
+## Unified CLI
 
 ```bash
-python scripts/run_research_core_v08.py \
-  --input-csv path/to/real_ohlcv.csv \
-  --fee-bps 10 \
-  --slippage-bps 2 \
-  --output-dir artifacts/v08-real
+modular-crypto-bot status
+modular-crypto-bot manifest --version v41
+modular-crypto-bot doctor
 ```
 
-Even a real single CSV run is not considered validated until it passes the full WFV/CPCV, regime, multiple-testing, cost and untouched-test protocol.
-
-## Required validation ladder
-
-1. Hypothesis registration
-2. Timestamp/lineage audit
-3. Leakage audit
-4. Purged WFV/CPCV
-5. Simple baselines
-6. Train/validation-only tuning
-7. Multiple seeds for stochastic models
-8. Fees/spread/slippage/funding
-9. Liquidity/capacity checks
-10. Regime stability
-11. Bootstrap confidence intervals
-12. PBO / Deflated Sharpe when strategy multiplicity exists
-13. Ablation
-14. Untouched final test
-15. Forward paper trading
-16. Testnet
-17. Live-readiness audit
-
-## Execution safety
-
-Predictive models never call an exchange directly. Signals must pass through cost/uncertainty abstention, an independent risk engine and an execution adapter. v0.8 contains no live-order implementation; the paper engine fails closed when `LIVE` is requested without explicit readiness.
-
-## Immediate next work
-
-- run dynamic-universe discovery with real public market metadata and persist coverage/rejection artifacts,
-- connect v0.6 cross-sectional ranking to the dynamic universe,
-- run Ichimoku and risk ablations under identical OOS/cost assumptions,
-- add point-in-time derivatives/on-chain/whale/fundamental connectors only where historical availability is trustworthy,
-- stabilize forward paper execution and reconciliation,
-- build the research/dashboard layer after backend artifacts are stable.
-
-## v0.17 frozen Ichimoku Strategy Lab
-
-The repository now includes a causal 4H comparison of B0, S1-S6, IRCP, C1 and C2 plus the IRGC-S event/meta-label candidate. Run:
+Build the causal mother features from an OHLCV CSV:
 
 ```bash
-pytest -q tests/test_strategy_lab_v17.py tests/test_binance_spot_archive_v17.py tests/test_forward_candidate_v17.py
-PYTHONPATH=. python scripts/run_strategy_lab_v17.py --archive-cache data/cache --bars 20000 --output-dir artifacts/v17-strategy-lab
-PYTHONPATH=. python scripts/run_forward_candidate_v17.py --archive-cache data/cache --symbol BTCUSDT
+modular-crypto-bot features \
+  --input path/to/ohlcv.csv \
+  --output results/features.csv
 ```
 
-See `docs/V17_ICHIMOKU_STRATEGY_LAB_PROTOCOL.md` and the dated v0.17 results report. The S6 adapter emits observation-only paper candidates with a 0.25% risk budget, 35% per-asset cap, 70% portfolio-gross cap and 5% drawdown kill switch. Results remain research-only and cannot enable live execution.
+Run a frozen characterization:
+
+```bash
+modular-crypto-bot characterize \
+  --version v41 \
+  --output-dir results/v41_characterization
+```
+
+The package can also be invoked with:
+
+```bash
+python -m research_bot
+```
+
+There is deliberately **no** CLI command for LIVE orders.
+
+## Development universe and validation
+
+Consumed development venues:
+
+- CoinEx
+- OKX
+- KuCoin
+
+Reserved external holdout:
+
+- Kraken — **SEALED until a preregistered development winner passes every frozen gate**
+
+Current primary research universe:
+
+- BTC/USDT
+- ETH/USDT
+- SOL/USDT
+- XRP/USDT
+- DOGE/USDT
+- 4-hour decision timeframe
+
+The current protocol uses purged chronological folds, embargo, independent venue accounting, realistic cost stress, moving-block bootstrap confidence intervals, asset breadth, quarter persistence, seed stability and max-drawdown gates.
+
+## Key files
+
+Mother strategy and finance:
+
+- `research_bot/mother_strategy_v39.py`
+- `research_bot/brooks_engine_v39.py`
+- `research_bot/financial_system_v39.py`
+
+v0.40:
+
+- `research_bot/two_stage_hurdle_v40.py`
+- `docs/V40_TWO_STAGE_HURDLE_PREREGISTRATION.md`
+- `docs/V40_RESULTS_2026-09-12.md`
+
+v0.41:
+
+- `research_bot/event_competing_risk_v41.py`
+- `research_bot/event_competing_risk_vectorized_v41.py`
+- `scripts/run_v41_competing_risk_characterization.py`
+- `scripts/run_v41_competing_risk_characterization_fast.py`
+- `docs/V41_EVENT_COMPETING_RISK_PREREGISTRATION.md`
+- `research_bot/cli.py`
+
+Tests and CI:
+
+- `tests/test_event_competing_risk_v41.py`
+- `tests/test_v41_vectorized_equivalence.py`
+- `tests/test_cli_v41.py`
+- `.github/workflows/v41-competing-risk-ci.yml`
+- `.github/workflows/v41-competing-risk-characterization.yml`
+
+## Scientific promotion policy
+
+A green CI run proves implementation integrity only. Promotion requires the preregistered economic/robustness gates to pass across every development venue. Only then may the sealed external holdout be evaluated. PAPER and LIVE remain fail-closed until a later explicit promotion protocol authorizes them.
+
+This repository intentionally preserves failed hypotheses and negative results because they are part of the thesis evidence, not files to be hidden or rewritten.
