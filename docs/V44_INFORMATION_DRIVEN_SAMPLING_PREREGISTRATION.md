@@ -171,10 +171,10 @@ Frozen rule:
 1. Each variant is independently evaluated against **all** forecast, temporal, perturbation, venue and economic gates.
 2. A variant that fails any required gate is ineligible regardless of relative rank.
 3. If exactly one passes, it is the development winner.
-4. If multiple pass, choose the simplest in the preregistered order: `S0 -> S1 -> S2` unless a paired OOS utility comparison demonstrates that the later variant has a positive lower confidence bound over the earlier passing variant. The paired comparison is diagnostic and cannot rescue a gate failure.
+4. If multiple variants pass every frozen gate, choose the **simplest first** in the preregistered order `S0 -> S1 -> S2`. There is no post-result statistical or economic tie-breaker and no opportunity to promote a later variant merely because its point estimate is larger.
 5. If none pass, decision is `V44_DEVELOPMENT_REJECT_OR_INSUFFICIENT_EVIDENCE`.
 
-This prevents threshold fishing and multiple-comparison winner selection.
+This removes discretionary multiple-comparison winner selection.
 
 ## Workflow/provenance contract
 
