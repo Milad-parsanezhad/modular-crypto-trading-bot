@@ -5,6 +5,7 @@ on:
     paths:
       - 'research_bot/economic_state_v46.py'
       - 'scripts/run_v46_economic_state_representation.py'
+      - 'scripts/run_v46_economic_state_representation_compat.py'
       - 'tests/test_economic_state_v46.py'
       - 'docs/V46_ECONOMIC_STATE_REPRESENTATION_PREREGISTRATION.md'
       - '.github/workflows/v46-economic-state-representation-valid.yml'
@@ -92,7 +93,7 @@ jobs:
 
       - name: Execute corrected frozen v0.46 ablation
         run: |
-          python scripts/run_v46_economic_state_representation.py \
+          python scripts/run_v46_economic_state_representation_compat.py \
             --input-dir work/v44 \
             --output-dir results/v46_economic_state
 
@@ -129,6 +130,7 @@ jobs:
             'corrected_prereg_head': os.environ['EXPECTED_PREREG_HEAD'],
             'source_v44_run': int(os.environ['SOURCE_V44_RUN']),
             'supersedes_pre_correction_v46_runs': True,
+            'pandas3_governor_compatibility_fix': 'writable ndarray copy only; frozen formulas/caps unchanged',
             'kraken_touched': False,
             'paper_execution': False,
             'live_execution': False,
