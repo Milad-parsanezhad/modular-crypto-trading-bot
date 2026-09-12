@@ -1,0 +1,36 @@
+{
+  "version": "v0.45",
+  "record_type": "POST_V44_ROUTE_SELECTION",
+  "canonical_v44_workflow_run_id": 34700944062,
+  "scientific_head_sha": "5efb843d385d194c549a69dc4b2fd38d56ab906c",
+  "canonical_artifact_id": 10300676250,
+  "canonical_artifact_sha256": "f3834a6dda2758648f5e5ad3dc176ad89699d559f0d8076482ef8cf673002ff2",
+  "finalizer_decision": "V44_DEVELOPMENT_REJECT_OR_INSUFFICIENT_EVIDENCE",
+  "selected_route": "C",
+  "selected_variant": null,
+  "routing_basis": {
+    "S0_CLOCK_MOTHER_BASELINE": {
+      "candidate_pass": false,
+      "positive_fold_fraction": 0.4,
+      "median_target_brier_skill": -0.11538735984468773,
+      "median_stop_brier_skill": -0.18675131264980172
+    },
+    "S1_CUSUM_LAGGED_VOL": {
+      "candidate_pass": false,
+      "positive_fold_fraction": 0.4,
+      "median_target_brier_skill": -0.09915116202254848,
+      "median_stop_brier_skill": -0.156047551433232
+    },
+    "S2_DIRECTIONAL_CHANGE_LAGGED_ATR": {
+      "candidate_pass": false,
+      "oos_events": 0,
+      "financially_executed_events": 0
+    }
+  },
+  "partial_fold_economics_used_for_routing": false,
+  "kraken_remained_sealed_through_route_selection": true,
+  "paper_execution": false,
+  "live_execution": false,
+  "next_experiment": "V45_LABEL_REPRESENTATION_DIAGNOSTIC",
+  "promotion_effect": "NONE_DIAGNOSTIC_ONLY"
+}
