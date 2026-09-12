@@ -28,6 +28,7 @@ Scientific state remains unchanged:
 | Fail-closed defaults | `ForwardPaperRunner` defaulted to execution enabled | Direct construction could silently enable simulated execution | Default changed to observation-only; enabling remains explicit |
 | Service firewall | Only two of four documented execution environment flags were checked | Legacy deployment flags could contradict the advertised firewall | Guard all documented LIVE/PAPER flags at import |
 | Test/CI contract | Three historical service test files expected the retired PAPER API; deployment CI ran only three smoke tests | Full suite had seven failures hidden by narrow CI | Update legacy assertions to current v0.50 contract and run the entire suite in deployment readiness CI |
+| Pandas 3 compatibility | A leakage test compared microsecond `DatetimeIndex` integers with nanosecond `Timestamp.value` | The causal sequence test failed only on the current GitHub runner despite the changed data beginning strictly after the comparison boundary | Compare timezone-aware timestamps directly, independent of internal resolution |
 | Scheduled workflow | v0.15 still polled the deployed service every four hours using the retired PAPER/Postgres contract | Predictable false alarms and misleading evidence labels | Archive and explicitly disable the obsolete collector |
 | Documentation | README still identified v0.41 as current | Repository entry point contradicted deployed v0.50 status | Update current lineage and v0.48–v0.50 references |
 
