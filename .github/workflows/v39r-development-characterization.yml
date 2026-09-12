@@ -1,0 +1,42 @@
+name: v39R Development Characterization
+
+on:
+  pull_request:
+    branches:
+      - research/v38-temporal-consensus
+  workflow_dispatch:
+
+jobs:
+  characterize-v39r:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Verify preregistration exists
+        run: test -f docs/V39R_DEVELOPMENT_PREREGISTRATION.md
+
+      - name: Run fixed development characterization
+        run: |
+          python scripts/run_v39r_development_characterization.py \
+            --output-dir results/v39r_characterization
+
+      - name: Upload v0.39R evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v39r-development-characterization
+          path: results/v39r_characterization/
+          if-no-files-found: error
+          retention-days: 90
