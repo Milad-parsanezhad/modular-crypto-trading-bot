@@ -2,7 +2,8 @@
 
 Private academic cryptocurrency trading-research repository for a causal, reproducible and fail-closed thesis bot.
 
-> **Current research line:** `v0.41` (`research/v41-event-competing-risk`)  
+> **Latest completed experiment:** `v0.50` (`V50_NONOVERLAP_FAILURE_SUPPORTED`)
+> **Next preregistered question:** `v0.51` prospective overlap-conflict arbitration
 > **Mother strategy:** `v0.39`  
 > **Execution state:** `RESEARCH_ONLY`  
 > **Kraken holdout:** `SEALED`  
@@ -81,6 +82,19 @@ Current hypothesis:
 - admit capital only when the conservative lower expected-R is positive and target probability exceeds stop probability.
 
 This experiment does **not** relax v0.40 thresholds after seeing outcomes and does not touch Kraken.
+
+### v0.42–v0.50 — Breadth, representation and utility diagnostics
+
+The subsequent frozen experiments tested breadth/cluster stability, asset and
+cross-venue effects, information-driven sampling, label/state representation,
+probability calibration, temporal/regime drift, conditional concept drift and
+expected-R utility mapping. The latest completed result is diagnostic rather
+than promotional: v0.50 supports broad harm at the earliest-first non-overlap
+stage. It does not validate an alternative arbitration rule and does not
+authorize Kraken, PAPER or LIVE execution.
+
+The next admissible research step is a prospectively specified v0.51
+overlap-conflict arbitration experiment. Historical v0.50 outputs remain frozen.
 
 ## Financial governance
 
@@ -202,6 +216,15 @@ v0.41:
 - `scripts/run_v41_competing_risk_characterization_fast.py`
 - `docs/V41_EVENT_COMPETING_RISK_PREREGISTRATION.md`
 - `research_bot/cli.py`
+
+v0.48–v0.50 diagnostics:
+
+- `research_bot/temporal_regime_diagnostic_v48.py`
+- `research_bot/conditional_concept_drift_v49.py`
+- `research_bot/expected_r_utility_mapping_v50.py`
+- `docs/V48_RESULTS_2026-09-12.md`
+- `docs/V49_RESULTS_2026-09-12.md`
+- `docs/V50_RESULTS_2026-09-12.md`
 
 Tests and CI:
 

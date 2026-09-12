@@ -19,6 +19,12 @@ MOTHER_STRATEGY = "v0.39"
 KRAKEN_STATE = "SEALED"
 PAPER_EXECUTION = False
 LIVE_EXECUTION = False
+EXECUTION_FLAG_NAMES = (
+    "LIVE_EXECUTION",
+    "PAPER_EXECUTION",
+    "BOT_FORWARD_PAPER_ENABLED",
+    "BOT_PAPER_EXECUTION_ENABLED",
+)
 CANONICAL_V50_RUN = 34707823108
 CANONICAL_V50_HEAD = "1dd0b1fe506fc51ceec4ff8934b77090f86b6cc2"
 CANONICAL_V50_ARTIFACT = 10302830689
@@ -30,10 +36,11 @@ def _truthy_env(name: str) -> bool:
 
 
 # Fail closed at import/startup. A deployment cannot silently enable execution.
-if _truthy_env("LIVE_EXECUTION") or _truthy_env("PAPER_EXECUTION"):
+enabled_execution_flags = [name for name in EXECUTION_FLAG_NAMES if _truthy_env(name)]
+if enabled_execution_flags:
     raise RuntimeError(
-        "Execution firewall violation: LIVE_EXECUTION and PAPER_EXECUTION must remain false "
-        "for the v0.50 research deployment."
+        "Execution firewall violation: all execution flags must remain false for the "
+        f"v0.50 research deployment; enabled={','.join(enabled_execution_flags)}"
     )
 
 app = FastAPI(

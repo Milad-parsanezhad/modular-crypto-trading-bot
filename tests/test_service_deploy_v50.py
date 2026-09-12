@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+
+import pytest
 from fastapi.testclient import TestClient
 
 from research_bot.service import (
@@ -9,6 +14,7 @@ from research_bot.service import (
     LIVE_EXECUTION,
     PAPER_EXECUTION,
     SERVICE_VERSION,
+    EXECUTION_FLAG_NAMES,
 )
 
 client = TestClient(app)
@@ -41,3 +47,20 @@ def test_research_status_pins_canonical_v50_result():
 def test_execution_endpoints_remain_locked():
     assert client.post("/decision/evaluate", json={}).status_code == 423
     assert client.post("/paper/run-once").status_code == 423
+
+
+@pytest.mark.parametrize("flag", EXECUTION_FLAG_NAMES)
+def test_every_documented_execution_flag_fails_closed_at_import(flag):
+    env = os.environ.copy()
+    for name in EXECUTION_FLAG_NAMES:
+        env[name] = "false"
+    env[flag] = "true"
+    result = subprocess.run(
+        [sys.executable, "-c", "import research_bot.service"],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "Execution firewall violation" in result.stderr

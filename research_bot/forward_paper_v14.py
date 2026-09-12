@@ -13,7 +13,7 @@ from .contracts import ExecutionMode
 from .execution import ExecutionPolicy, ExecutionRequest, OrderSide, PaperExecutionEngine
 from .ichimoku_advanced import detect_kumo_triangle_breakout
 from .persistence import PaperAccount, PaperPosition
-from .risk import RiskEngine, RiskLimits, RiskSnapshot
+from .risk import RiskDecision, RiskEngine, RiskLimits, RiskSnapshot
 
 
 STRATEGY_VERSION = "ICHIMOKU_SHADOW_V14"
@@ -148,7 +148,7 @@ def frozen_shadow_signal(df: pd.DataFrame, currently_long: bool, entry_rule_scor
 class ForwardPaperRunner:
     """Forward-only CoinEx paper observer/executor with restart deduplication."""
 
-    def __init__(self, store, *, config: ForwardPaperConfig | None = None, market_client: ForwardMarketClient | None = None, paper_execution_enabled: bool = True):
+    def __init__(self, store, *, config: ForwardPaperConfig | None = None, market_client: ForwardMarketClient | None = None, paper_execution_enabled: bool = False):
         self.store = store
         self.config = config or ForwardPaperConfig()
         self.market = market_client or CoinExForwardMarketClient()
@@ -229,7 +229,10 @@ class ForwardPaperRunner:
             proposed_weight = notional / account.equity if account.equity > 0 else 1.0
             turnover = proposed_weight
         else:
-            quantity = float(position.quantity)
+            # Respect the per-order notional cap without preventing liquidation
+            # of a position accumulated over multiple historical paper fills.
+            max_exit_quantity = self.config.max_order_notional / signal.reference_price
+            quantity = min(float(position.quantity), float(max_exit_quantity))
             notional = quantity * signal.reference_price
             proposed_weight = notional / account.equity if account.equity > 0 else 1.0
             turnover = proposed_weight
@@ -237,22 +240,31 @@ class ForwardPaperRunner:
         if quantity <= 0:
             return {"symbol": symbol, "status": "NO_POSITION_OR_SIZE", "signal": asdict(signal)}
 
-        risk = self.risk_engine.evaluate(RiskSnapshot(equity=account.equity, peak_equity=account.peak_equity, gross_exposure=gross_exposure + (proposed_weight if signal.action == "BUY_CANDIDATE" else 0.0), asset_weight=proposed_weight, turnover=turnover, spread_bps=float(depth.spread_bps), slippage_bps=float(self.config.slippage_bps + max(0.0, depth.spread_bps / 2.0)), recent_returns=tuple(self.store.recent_equity_returns(limit=100))))
+        if signal.action == "EXIT":
+            # A hard drawdown/exposure gate must stop new risk, not trap an
+            # existing position. Liquidity is still modeled by fill_fraction.
+            risk = RiskDecision(True, False, ("RISK_REDUCING_EXIT",), None)
+        else:
+            risk = self.risk_engine.evaluate(RiskSnapshot(equity=account.equity, peak_equity=account.peak_equity, gross_exposure=gross_exposure + proposed_weight, asset_weight=proposed_weight, turnover=turnover, spread_bps=float(depth.spread_bps), slippage_bps=float(self.config.slippage_bps + max(0.0, depth.spread_bps / 2.0)), recent_returns=tuple(self.store.recent_equity_returns(limit=100))))
         if not risk.approved:
             self.store.record_equity({"timestamp": now.isoformat(), "equity": account.equity, "cash": account.cash, "gross_exposure": gross_exposure, "metadata": {"symbol": symbol, "risk_rejected": list(risk.reasons)}})
             return {"symbol": symbol, "status": "RISK_REJECTED", "signal": asdict(signal), "risk": asdict(risk)}
 
         side = OrderSide.BUY if signal.action == "BUY_CANDIDATE" else OrderSide.SELL
         visible_qty = depth.ask_depth if side is OrderSide.BUY else depth.bid_depth
-        fill_fraction = float(min(1.0, max(0.05, visible_qty / quantity))) if quantity > 0 else 0.0
+        if not np.isfinite(visible_qty) or visible_qty < 0.0:
+            raise ValueError("visible depth must be finite and non-negative")
+        fill_fraction = float(min(1.0, visible_qty / quantity)) if quantity > 0 else 0.0
         extra_slippage = float(min(20.0, max(0.0, depth.spread_bps / 2.0)))
         client_order_id = f"{STRATEGY_VERSION}:{symbol.replace('/','')}:{int(pd.Timestamp(bar_ts).timestamp())}:{side.value}"
         fill = self.execution.execute(ExecutionRequest(client_order_id=client_order_id, symbol=symbol, side=side, quantity=quantity, reference_price=signal.reference_price, created_at=now), fill_fraction=fill_fraction, extra_slippage_bps=extra_slippage)
-        self._apply_fill(symbol, fill)
+        if fill.filled_quantity > 0.0:
+            self._apply_fill(symbol, fill)
         self.store.record_fill({"timestamp": fill.timestamp.isoformat(), "client_order_id": fill.client_order_id, "symbol": fill.symbol, "side": fill.side.value, "requested_quantity": fill.requested_quantity, "filled_quantity": fill.filled_quantity, "fill_price": fill.fill_price, "fee_paid": fill.fee_paid, "slippage_paid": fill.slippage_paid, "status": fill.status, "strategy_version": STRATEGY_VERSION, "metadata": {"rule_score": signal.rule_score, "risk_reasons": list(risk.reasons), "spread_bps": depth.spread_bps, "paper_only": True}})
         account, gross_exposure = self._mark_account(symbol, signal.reference_price)
         self.store.record_equity({"timestamp": now.isoformat(), "equity": account.equity, "cash": account.cash, "gross_exposure": gross_exposure, "metadata": {"symbol": symbol, "fill_status": fill.status}})
-        return {"symbol": symbol, "status": "EXECUTED_PAPER", "signal": asdict(signal), "risk": asdict(risk), "fill": {**asdict(fill), "side": fill.side.value, "mode": fill.mode.value, "timestamp": fill.timestamp.isoformat()}, "account": asdict(account)}
+        status = "NO_LIQUIDITY" if fill.filled_quantity == 0.0 else "EXECUTED_PAPER"
+        return {"symbol": symbol, "status": status, "signal": asdict(signal), "risk": asdict(risk), "fill": {**asdict(fill), "side": fill.side.value, "mode": fill.mode.value, "timestamp": fill.timestamp.isoformat()}, "account": asdict(account)}
 
     def run_cycle(self, now: datetime | None = None) -> dict:
         now = now or datetime.now(timezone.utc)

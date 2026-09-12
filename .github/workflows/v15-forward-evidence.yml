@@ -1,4 +1,10 @@
-name: v15-forward-evidence
+name: ARCHIVED v15 Forward Evidence — DISABLED
+
+# The v0.15 collector required the retired PAPER/Postgres service contract.
+# The current v0.50 deployment is RESEARCH_ONLY with PAPER=false. Keeping the
+# old four-hour schedule active creates false CI alarms and can mislabel the
+# current service as failed evidence. A future forward study needs a new,
+# prospectively registered experiment and workflow.
 
 on:
   workflow_dispatch:
@@ -12,14 +18,13 @@ on:
       - "tests/test_forward_evidence_v15.py"
       - ".github/workflows/v15-forward-evidence.yml"
       - "docs/V15_FORWARD_EVIDENCE_PROTOCOL.md"
-  schedule:
-    - cron: "17 */4 * * *"
 
 permissions:
   contents: read
 
 jobs:
   forward-evidence:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+import math
 
 from .contracts import ExecutionMode
 
@@ -24,6 +25,15 @@ class ExecutionPolicy:
     slippage_bps: float = 2.0
     max_order_notional: float = 5_000.0
     live_execution_enabled: bool = False
+
+    def __post_init__(self) -> None:
+        numeric = (self.fee_bps, self.slippage_bps, self.max_order_notional)
+        if not all(math.isfinite(float(value)) for value in numeric):
+            raise ValueError("execution-policy values must be finite")
+        if self.fee_bps < 0.0 or self.slippage_bps < 0.0:
+            raise ValueError("fee_bps and slippage_bps must be non-negative")
+        if self.max_order_notional <= 0.0:
+            raise ValueError("max_order_notional must be positive")
 
     def assert_safe(self) -> None:
         if self.mode is ExecutionMode.LIVE and not self.live_execution_enabled:
@@ -87,12 +97,22 @@ class PaperExecutionEngine:
     ) -> ExecutionFill:
         if request.client_order_id in self._seen_ids:
             raise RuntimeError(f"duplicate client_order_id: {request.client_order_id}")
+        if not request.client_order_id.strip() or not request.symbol.strip():
+            raise ValueError("client_order_id and symbol are required")
+        if not math.isfinite(float(request.quantity)) or not math.isfinite(float(request.reference_price)):
+            raise ValueError("quantity and reference_price must be finite")
         if request.quantity <= 0 or request.reference_price <= 0:
             raise ValueError("quantity and reference_price must be positive")
+        if request.created_at.tzinfo is None:
+            raise ValueError("created_at must be timezone-aware")
+        if request.order_type is OrderType.LIMIT:
+            raise RuntimeError("LIMIT_ORDER_SIMULATION_UNSUPPORTED")
         if request.notional > self.policy.max_order_notional:
             raise RuntimeError("MAX_ORDER_NOTIONAL_BREACH")
-        if not 0.0 <= fill_fraction <= 1.0:
+        if not math.isfinite(float(fill_fraction)) or not 0.0 <= fill_fraction <= 1.0:
             raise ValueError("fill_fraction must be in [0, 1]")
+        if not math.isfinite(float(extra_slippage_bps)):
+            raise ValueError("extra_slippage_bps must be finite")
 
         self._seen_ids.add(request.client_order_id)
         filled_quantity = request.quantity * fill_fraction
@@ -121,5 +141,5 @@ class PaperExecutionEngine:
             slippage_paid=float(slippage_paid),
             mode=self.policy.mode,
             status=status,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=request.created_at,
         )

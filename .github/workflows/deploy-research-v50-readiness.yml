@@ -3,8 +3,8 @@ name: v0.50 Research Deployment Readiness
 on:
   pull_request:
     paths:
-      - 'research_bot/service.py'
-      - 'tests/test_service_deploy_v50.py'
+      - 'research_bot/**'
+      - 'tests/**'
       - 'pyproject.toml'
       - 'railway.toml'
       - '.github/workflows/deploy-research-v50-readiness.yml'
@@ -39,12 +39,14 @@ jobs:
         env:
           LIVE_EXECUTION: 'false'
           PAPER_EXECUTION: 'false'
-        run: pytest -q tests/test_service_deploy_v50.py
+        run: |
+          python -m compileall -q research_bot scripts
+          pytest -q
 
       - name: Verify fail-closed import guard
         run: |
           set +e
-          LIVE_EXECUTION=true PAPER_EXECUTION=false python -c 'import research_bot.service' >/tmp/guard.out 2>/tmp/guard.err
+          LIVE_EXECUTION=false PAPER_EXECUTION=false BOT_FORWARD_PAPER_ENABLED=true python -c 'import research_bot.service' >/tmp/guard.out 2>/tmp/guard.err
           code=$?
           set -e
           test "$code" -ne 0
