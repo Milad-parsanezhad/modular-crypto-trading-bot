@@ -1,62 +1,24 @@
-name: v34-kraken-holdout
+name: ARCHIVED v34 Kraken Holdout — DISABLED
+
+# Historical workflow retained as a visible fail-closed guard.
+# The original v0.34 implementation targeted the old v0.33 candidate and is
+# scientifically obsolete for the current v0.43+ lineage. Kraken is reserved
+# and MUST NOT be fetched until a new preregistered development winner explicitly
+# authorizes a one-shot holdout under a new experiment ID.
 
 on:
-  push:
-    branches: ["research/v34-kraken-holdout"]
-    paths:
-      - "research_bot/kraken_holdout_v34.py"
-      - "scripts/run_v34_kraken_holdout.py"
-      - "tests/test_kraken_holdout_v34.py"
-      - ".github/workflows/v34-kraken-holdout.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
-  kraken-holdout:
+  archived-guard:
+    if: ${{ false }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-      - name: Install research package
-        run: python -m pip install -e '.[dev]'
-      - name: Verify v0.34 fail-closed gate
-        run: python -m pytest -q tests/test_kraken_holdout_v34.py tests/test_breadth_stability_v33.py
-      - name: Wait for frozen v0.33 run
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Kraken remains sealed
         run: |
-          for i in $(seq 1 80); do
-            status=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repos/${{ github.repository }}/actions/runs/34635480693 | python -c 'import json,sys; x=json.load(sys.stdin); print(x.get("status",""), x.get("conclusion") or "")')
-            echo "$status"
-            case "$status" in
-              "completed success") exit 0 ;;
-              completed*) echo "v0.33 did not complete successfully"; exit 1 ;;
-            esac
-            sleep 15
-          done
-          echo "timed out waiting for v0.33"; exit 1
-      - name: Download frozen v0.33 evidence
-        uses: actions/download-artifact@v4
-        with:
-          name: v33-breadth-stability
-          path: frozen-v33
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          run-id: 34635480693
-      - name: Run untouched Kraken holdout or fail closed
-        run: python scripts/run_v34_kraken_holdout.py --v33-artifact-dir frozen-v33 --output-dir artifacts/v34-kraken-holdout
-      - name: Print v0.34 decision
-        run: cat artifacts/v34-kraken-holdout/decision_v34.json
-      - name: Upload v0.34 evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: v34-kraken-holdout
-          path: artifacts/v34-kraken-holdout
-          retention-days: 90
+          echo "ARCHIVED: v0.34 Kraken holdout is disabled."
+          echo "Create a NEW preregistered holdout workflow only after a current development winner passes every frozen gate."
+          exit 1
