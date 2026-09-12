@@ -3,7 +3,10 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+
+from research_bot.information_sampling_v44 import cusum_information_events_v44
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,7 +53,6 @@ def test_variant_masks_cannot_move_common_fold_boundaries():
 
 def test_fit_and_calibration_require_settled_labels_before_boundaries():
     events = _events()
-    # Force two rows to settle after their allowed boundary; they must be excluded.
     events.loc[10, "exit_time"] = pd.Timestamp("2026-01-11T00:00:00Z")
     events.loc[70, "exit_time"] = pd.Timestamp("2026-01-19T00:00:00Z")
     row = pd.Series({
@@ -62,3 +64,26 @@ def test_fit_and_calibration_require_settled_labels_before_boundaries():
     fit, cal, _ = mod._window_slice(events, row)
     assert (fit["exit_time"] < row["cal_start"]).all()
     assert (cal["exit_time"] < row["test_start"]).all()
+
+
+def test_cusum_zero_lagged_scale_uses_preregistered_epsilon_floor():
+    n = 32
+    close = np.full(n, 100.0)
+    close[20:] = 101.0
+    open_ = np.full(n, 100.0)
+    open_[21:] = 101.0
+    high = np.maximum(open_, close)
+    low = np.minimum(open_, close)
+    frame = pd.DataFrame({
+        "timestamp": pd.date_range("2026-01-01", periods=n, freq="4h", tz="UTC"),
+        "open": open_,
+        "high": high,
+        "low": low,
+        "close": close,
+        "volume": np.full(n, 1_000.0),
+        "mother_event_v39": np.ones(n, dtype=int),
+    })
+    events = cusum_information_events_v44(frame)
+    # ATR(t-1) is exactly zero at the first jump. The frozen preregistration is
+    # r_t / max(scale_t, eps), so the jump must be processed rather than skipped.
+    assert bool(events.iloc[20])
