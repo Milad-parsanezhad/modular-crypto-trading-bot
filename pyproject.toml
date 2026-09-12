@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "modular-crypto-research-bot"
-version = "1.0.0rc1"
-description = "Evidence-driven modular cryptocurrency trading research and forward-paper platform"
+version = "1.0.0rc3"
+description = "Evidence-driven modular cryptocurrency trading research and monitoring platform"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
