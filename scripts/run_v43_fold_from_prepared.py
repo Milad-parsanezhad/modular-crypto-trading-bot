@@ -16,7 +16,6 @@ from research_bot.asset_crossvenue_v43 import (
     V43_PERTURBATION_SEEDS,
     brier_skill_v43,
     empirical_hazard_baseline_v43,
-    moving_block_resample_positions_v43,
     training_support_v43,
 )
 from research_bot.event_competing_risk_v41 import (
@@ -27,6 +26,7 @@ from research_bot.event_competing_risk_v41 import (
     median_seed_prediction_v41,
 )
 from research_bot.event_competing_risk_vectorized_v41 import predict_competing_risks_vectorized_v41
+from research_bot.time_cluster_bootstrap_v43 import timestamp_cluster_block_resample_v43
 
 ROOT = Path(__file__).resolve().parents[1]
 V42 = ROOT / "scripts" / "run_v42_breadth_cluster_characterization.py"
@@ -47,12 +47,15 @@ def _fit_one_perturbation(
     test: pd.DataFrame,
     seed: int,
     policy: DataQualityPolicyV43,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, dict]:
     ordered = fit.sort_values(["signal_time", "venue"], kind="mergesort").reset_index(drop=True)
-    pos = moving_block_resample_positions_v43(
-        len(ordered), seed=int(seed), block_length=policy.perturbation_block_events, policy=policy
+    perturbed, diag = timestamp_cluster_block_resample_v43(
+        ordered,
+        seed=int(seed),
+        target_block_events=policy.perturbation_block_events,
+        timestamp_col="signal_time",
+        venue_col="venue",
     )
-    perturbed = ordered.iloc[pos].reset_index(drop=True)
     cr = CompetingRiskPolicyV41()
     bundle = fit_competing_risk_bundle_v41(
         "V41_HISTGB_CAUSE_SPECIFIC", perturbed, V43_FEATURES, int(seed), cr
@@ -61,7 +64,13 @@ def _fit_one_perturbation(
     test_point = predict_competing_risks_vectorized_v41(bundle, test)
     pred = calibrate_expected_r_bounds_v41(cal, cal_point, test_point, cr)
     pred["perturbation_seed_v43"] = int(seed)
-    return pred
+    return pred, {
+        "bootstrap_original_rows": diag.original_rows,
+        "bootstrap_original_timestamps": diag.original_timestamps,
+        "bootstrap_resampled_rows": diag.resampled_rows,
+        "bootstrap_selected_blocks": diag.selected_blocks,
+        "bootstrap_target_block_events": diag.target_block_events,
+    }
 
 
 def main() -> None:
@@ -106,7 +115,7 @@ def main() -> None:
         baseline = empirical_hazard_baseline_v43(fit, test)
         perturb_outputs: list[pd.DataFrame] = []
         for seed in V43_PERTURBATION_SEEDS:
-            pred = _fit_one_perturbation(fit, cal, test, int(seed), policy)
+            pred, bootdiag = _fit_one_perturbation(fit, cal, test, int(seed), policy)
             perturb_outputs.append(pred)
             sel = pred["selected_v41"].astype(bool)
             perturb_rows.append({
@@ -118,6 +127,7 @@ def main() -> None:
                 "test_events": int(len(test)),
                 "selected_events": int(sel.sum()),
                 "selected_expectancy_r": float(pred.loc[sel, "net_r"].mean()) if int(sel.sum()) else None,
+                **bootdiag,
             })
 
         combined = median_seed_prediction_v41(perturb_outputs, CompetingRiskPolicyV41())
@@ -184,6 +194,7 @@ def main() -> None:
         "target_skill_positive_asset_fraction": float(np.mean(np.asarray(target_skills) > 0.0)) if target_skills else 0.0,
         "stop_skill_positive_asset_fraction": float(np.mean(np.asarray(stop_skills) > 0.0)) if stop_skills else 0.0,
         "kraken_touched": False,
+        "perturbation_unit": "timestamp_cluster",
     }
     (outdir / f"fold_diag_{args.fold}_v43.json").write_text(
         json.dumps(fold_diag, indent=2, sort_keys=True), encoding="utf-8"
