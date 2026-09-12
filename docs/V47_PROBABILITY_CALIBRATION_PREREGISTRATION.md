@@ -71,7 +71,8 @@ For an asset-fold to be admissible for calibrated arms:
 - all four R1 states must occur in FIT;
 - all four R1 states must occur in CAL for C2;
 - C1 requires at least two CAL states and finite base probabilities;
-- unsupported units fail closed and are recorded; they are never silently dropped from gate denominators.
+- unsupported units fail closed and are recorded; they are never silently dropped from gate denominators;
+- **promotion requires calibrated-arm supported asset-fold coverage to equal C0 coverage exactly**. A calibrator may not look better by silently losing difficult asset-folds.
 
 ## Data partition firewall
 
@@ -117,16 +118,17 @@ Native four-state Brier/log-loss remain diagnostics only.
 
 A calibrated arm must pass every gate:
 
-1. median common-space multiclass Brier strictly lower than C0;
-2. median common-space mean reliability error strictly lower than C0;
-3. median common-space macro OVR AUC >= C0 minus `0.01`;
-4. positive OOS fold expectancy fraction >= `0.60` (>=3/5);
-5. aggregate post-cost expectancy > `0`;
-6. aggregate PF >= `1.05`;
-7. aggregate 36 bps stress PF >= `1.00`;
-8. worst Financial-Governor drawdown >= `-0.05`;
-9. Kraken remains sealed;
-10. no post-result threshold/asset/regime/event-family pruning.
+1. supported asset-fold coverage exactly equals C0 coverage;
+2. median common-space multiclass Brier strictly lower than C0;
+3. median common-space mean reliability error strictly lower than C0;
+4. median common-space macro OVR AUC >= C0 minus `0.01`;
+5. positive OOS fold expectancy fraction >= `0.60` (>=3/5);
+6. aggregate post-cost expectancy > `0`;
+7. aggregate PF >= `1.05`;
+8. aggregate 36 bps stress PF >= `1.00`;
+9. worst Financial-Governor drawdown >= `-0.05`;
+10. Kraken remains sealed;
+11. no post-result threshold/asset/regime/event-family pruning.
 
 ## Deterministic selection rule
 
@@ -171,4 +173,4 @@ If execution fails before a canonical scientific decision is produced:
 
 Final preregistered state:
 
-`V47_PREREGISTERED / R1_FROZEN / CALIBRATION_ONLY / KRAKEN_SEALED / PAPER_OFF / LIVE_OFF`
+`V47_PREREGISTERED / R1_FROZEN / CALIBRATION_ONLY / FULL_COVERAGE_REQUIRED / KRAKEN_SEALED / PAPER_OFF / LIVE_OFF`
