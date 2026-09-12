@@ -1,7 +1,21 @@
 # v0.46 — Economic-State Representation Redesign Preregistration
 
 Date frozen: 2026-09-12  
-Status: **PREREGISTERED BEFORE v0.46 EMPIRICAL EXECUTION**
+Status: **PREREGISTERED BEFORE VALID v0.46 EMPIRICAL EXECUTION**
+
+## Prospective metric correction before any valid result
+
+The first empirical workflow attempt was stopped by a shallow-checkout lineage defect before reading data. A later run reached the empirical step, but **before any v0.46 result or artifact was inspected**, a methodological issue was identified in the preregistered comparison metric: raw multiclass Brier scores from a three-class label space and a four-class label space are not directly comparable.
+
+Therefore the cross-arm forecast comparison is prospectively corrected before any result is admitted:
+
+- each arm still reports its native multiclass Brier score as a within-arm diagnostic;
+- the **primary cross-arm Brier comparison uses the common frozen three-state space `TARGET / STOP / TIME`**;
+- for R1, `P(TIME)` is reconstructed as `P(TIME_POSITIVE) + P(TIME_NONPOSITIVE)`;
+- the primary reliability comparison is computed on the same common three-state probabilities;
+- no threshold, feature, state definition, fold, cost, learner, asset, or economic gate changes.
+
+Any v0.46 run started before this corrected preregistration commit is **superseded and inadmissible**, even if it later completes.
 
 ## Motivation
 
@@ -90,18 +104,28 @@ No additional flexible calibrator is introduced. The logistic softmax probabilit
 
 ## Frozen forecast metrics
 
-For each arm, fold and asset:
+For each arm, fold and asset, report native diagnostics:
 
-- multiclass Brier score;
+- native multiclass Brier score;
 - log loss where all required classes are supported;
 - classwise one-vs-rest Brier score;
 - classwise reliability / resolution decomposition using ten fixed equal-width probability bins;
 - macro one-vs-rest AUC where mathematically defined.
 
-The primary representation comparison is:
+For **cross-arm** comparison, both arms are scored on the same three-state outcome space:
 
-- median multiclass Brier score across supported asset-fold units;
-- median reliability error across supported units;
+`TARGET / STOP / TIME`
+
+For R0, these are its native probabilities. For R1:
+
+- `P(TARGET_common) = P(TARGET)`
+- `P(STOP_common) = P(STOP)`
+- `P(TIME_common) = P(TIME_POSITIVE) + P(TIME_NONPOSITIVE)`
+
+Primary cross-arm forecast metrics:
+
+- median common-space three-state Brier score across supported asset-fold units;
+- median common-space mean reliability error across supported units;
 - positive-fold fraction for the economic score described below.
 
 ## Frozen economic reconstruction
@@ -125,14 +149,14 @@ A test event is model-admissible only when:
 
 No probability threshold is tuned.
 
-The existing Financial Governor is then applied unchanged to admissible events for economic characterization.
+The existing Financial Governor is applied unchanged to admissible events for economic characterization. The model reconstructed expected-R score is passed into the frozen governor without changing any risk parameter.
 
 ## Frozen comparison gates
 
 `R1_FOUR_STATE_TIMEOUT_SIGN` earns **development-candidate** status only if all of the following hold:
 
-1. it has lower median multiclass Brier score than R0;
-2. it has lower median reliability error than R0;
+1. it has lower median **common-space three-state Brier score** than R0;
+2. it has lower median **common-space mean reliability error** than R0;
 3. at least 3/5 folds have positive post-cost expectancy after model admission and Financial Governor;
 4. aggregate post-governor expectancy is positive;
 5. aggregate post-governor profit factor is at least 1.05;
@@ -165,7 +189,7 @@ The canonical v0.46 artifact must contain:
 - exact source/provenance record;
 - arm/fold/asset support manifest;
 - class prevalence tables;
-- forecast metrics;
+- native and common-space forecast metrics;
 - reliability-bin tables;
 - expected-R state-value tables computed from training only;
 - OOS predictions;
@@ -176,4 +200,4 @@ The canonical v0.46 artifact must contain:
 
 ## Frozen state
 
-`V46_PREREG_FROZEN / KRAKEN_SEALED / PAPER_OFF / LIVE_OFF`
+`V46_PREREG_CORRECTED_BEFORE_VALID_RESULT / KRAKEN_SEALED / PAPER_OFF / LIVE_OFF`
