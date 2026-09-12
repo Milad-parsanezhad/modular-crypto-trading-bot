@@ -1,0 +1,45 @@
+name: v40 Two-Stage Development Characterization
+
+on:
+  pull_request:
+    branches:
+      - research/v39-robust-financial-system
+  workflow_dispatch:
+
+jobs:
+  characterize-v40:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
+
+      - name: Verify frozen preregistration exists
+        run: test -f docs/V40_TWO_STAGE_HURDLE_PREREGISTRATION.md
+
+      - name: Re-run v0.40 invariant tests
+        run: pytest -q tests/test_two_stage_hurdle_v40.py
+
+      - name: Compile characterization runner
+        run: python -m py_compile scripts/run_v40_two_stage_characterization.py
+
+      - name: Run frozen v0.40 development characterization
+        run: python scripts/run_v40_two_stage_characterization.py --output-dir results/v40_characterization
+
+      - name: Upload v0.40 development evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v40-two-stage-development-characterization
+          path: results/v40_characterization/
+          retention-days: 90
