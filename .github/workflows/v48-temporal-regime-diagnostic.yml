@@ -1,0 +1,163 @@
+name: v0.48 Temporal Regime Diagnostic
+
+on:
+  pull_request:
+    paths:
+      - 'research_bot/temporal_regime_diagnostic_v48.py'
+      - 'scripts/run_v48_temporal_regime_diagnostic.py'
+      - 'tests/test_temporal_regime_diagnostic_v48.py'
+      - 'docs/V48_TEMPORAL_REGIME_DIAGNOSTIC_PREREGISTRATION.md'
+      - 'docs/V48_TEMPORAL_REGIME_DIAGNOSTIC_RESEARCH_2026-09-12.md'
+      - '.github/workflows/v48-temporal-regime-diagnostic.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: v48-diagnostic-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  EXPECTED_PREREG_HEAD: 648253fc8b8ad807b2a442a0cc9ae3e0c0b4d523
+  CANONICAL_V47_RESULT_COMMIT: 6d20e8c4ba3cfe2523e38747bd82756213fc07b1
+  SOURCE_V44_RUN: '34700944062'
+  SOURCE_V47_RUN: '34705324352'
+
+jobs:
+  diagnostic-v48:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact scientific head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert frozen prereg lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL=$(git rev-parse HEAD)
+          EXPECTED='${{ github.event.pull_request.head.sha || github.sha }}'
+          test "$ACTUAL" = "$EXPECTED"
+          git cat-file -e "$EXPECTED_PREREG_HEAD^{commit}"
+          git merge-base --is-ancestor "$EXPECTED_PREREG_HEAD" "$ACTUAL"
+          grep -q 'PREREGISTERED BEFORE ANY v0.48 FORMAL DIAGNOSTIC EXECUTION' docs/V48_TEMPORAL_REGIME_DIAGNOSTIC_PREREGISTRATION.md
+          grep -q 'candidate_promotion_allowed = false' docs/V48_TEMPORAL_REGIME_DIAGNOSTIC_PREREGISTRATION.md
+
+      - name: Verify inherited scientific system is unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code "$CANONICAL_V47_RESULT_COMMIT" HEAD -- \
+            research_bot/economic_state_v46.py \
+            research_bot/event_competing_risk_v41.py \
+            research_bot/probability_calibration_v47.py \
+            scripts/run_v47_probability_calibration.py \
+            scripts/run_v47_probability_calibration_compat.py \
+            research_bot/financial_system_v39.py
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install package and tests
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . pytest
+          pip check
+          python - <<'PY'
+          import numpy, pandas, scipy, sklearn
+          print('numpy', numpy.__version__)
+          print('pandas', pandas.__version__)
+          print('scipy', scipy.__version__)
+          print('sklearn', sklearn.__version__)
+          PY
+
+      - name: Run v0.48 regression tests
+        run: pytest -q tests/test_temporal_regime_diagnostic_v48.py tests/test_probability_calibration_v47.py tests/test_economic_state_v46.py
+
+      - name: Download exact canonical v0.44 prepared evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: v44-prepared-data
+          path: work/v44
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_V44_RUN }}
+
+      - name: Download exact canonical v0.47 evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: v47-probability-calibration
+          path: work/v47
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_V47_RUN }}
+
+      - name: Execute frozen v0.48 diagnostic
+        run: |
+          python scripts/run_v48_temporal_regime_diagnostic.py \
+            --v44-dir work/v44 \
+            --v47-dir work/v47 \
+            --output-dir results/v48_temporal_regime_diagnostic
+
+      - name: Verify output contract and safety state
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in decision_v48.json unit_drift_v48.csv fold_drift_tests_v48.csv forecast_link_v48.csv economic_decomposition_v48.csv output_hashes_v48.json; do
+            test -f "results/v48_temporal_regime_diagnostic/$f"
+          done
+          python - <<'PY'
+          import json
+          d=json.load(open('results/v48_temporal_regime_diagnostic/decision_v48.json'))
+          assert d['supported_units'] == 120
+          assert d['candidate_promotion_allowed'] is False
+          assert d['kraken_touched'] is False
+          assert d['paper_execution'] is False
+          assert d['live_execution'] is False
+          assert d['post_result_pruning'] is False
+          assert d['decision'] in {
+              'V48_DIAGNOSTIC_SUPPORTS_TEMPORAL_DISTRIBUTION_SHIFT',
+              'V48_SHIFT_PRESENT_LINK_TO_FORECAST_FAILURE_INCONCLUSIVE',
+              'V48_NONSTATIONARITY_EVIDENCE_INCONCLUSIVE',
+          }
+          PY
+
+      - name: Write execution provenance
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          out=Path('results/v48_temporal_regime_diagnostic')
+          p={
+            'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
+            'workflow_attempt': os.environ.get('GITHUB_RUN_ATTEMPT'),
+            'head_sha': subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip(),
+            'prereg_head': os.environ['EXPECTED_PREREG_HEAD'],
+            'source_v44_run': int(os.environ['SOURCE_V44_RUN']),
+            'source_v47_run': int(os.environ['SOURCE_V47_RUN']),
+            'canonical_v47_result_commit': os.environ['CANONICAL_V47_RESULT_COMMIT'],
+            'diagnostic_only': True,
+            'candidate_promotion_allowed': False,
+            'kraken_touched': False,
+            'paper_execution': False,
+            'live_execution': False,
+          }
+          (out/'execution_provenance_v48.json').write_text(json.dumps(p,indent=2,sort_keys=True))
+          PY
+
+      - name: Upload canonical v0.48 diagnostic evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: v48-temporal-regime-diagnostic
+          path: results/v48_temporal_regime_diagnostic/
+          if-no-files-found: error
+          retention-days: 90
