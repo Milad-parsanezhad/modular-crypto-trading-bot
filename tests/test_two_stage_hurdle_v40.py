@@ -53,7 +53,7 @@ def test_calibration_split_is_chronological_and_disjoint() -> None:
     assert len(prob) == 50
     assert len(conf) == 50
     assert prob["signal_time"].max() < conf["signal_time"].min()
-    assert set(prob.index).isdisjoint(set(conf.index)) is False  # indices reset by splitter copies
+    assert set(prob.index).isdisjoint(set(conf.index))
     assert not set(prob["signal_time"]).intersection(set(conf["signal_time"]))
 
 
