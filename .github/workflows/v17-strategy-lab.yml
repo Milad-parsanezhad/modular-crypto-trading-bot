@@ -3,14 +3,42 @@ name: v17-strategy-lab
 on:
   push:
     branches: [main]
+    paths:
+      - "research_bot/strategy_lab.py"
+      - "research_bot/binance_spot_archive.py"
+      - "research_bot/forward_candidate_v17.py"
+      - "tests/test_strategy_lab_v17.py"
+      - "tests/test_binance_spot_archive_v17.py"
+      - "tests/test_forward_candidate_v17.py"
+      - "pyproject.toml"
+      - ".github/workflows/v17-strategy-lab.yml"
   pull_request:
+    paths:
+      - "research_bot/strategy_lab.py"
+      - "research_bot/binance_spot_archive.py"
+      - "research_bot/forward_candidate_v17.py"
+      - "tests/test_strategy_lab_v17.py"
+      - "tests/test_binance_spot_archive_v17.py"
+      - "tests/test_forward_candidate_v17.py"
+      - "pyproject.toml"
+      - ".github/workflows/v17-strategy-lab.yml"
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   causal-strategy-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
