@@ -34,6 +34,19 @@ spec.loader.exec_module(v42)
 base = v42.base
 
 
+def _label_safe_cutoff(frame: pd.DataFrame, horizon_bars: int) -> pd.Timestamp:
+    """Latest signal timestamp that still has `horizon_bars` actual future bars.
+
+    v0.39 labels enter on t+1 and may inspect through t+horizon_bars.  A wall-
+    clock subtraction is insufficient when the quality policy permits small gaps,
+    so this cutoff is based on observed bar position rather than elapsed hours.
+    """
+    x = frame.sort_values("timestamp", kind="mergesort").reset_index(drop=True)
+    if len(x) <= int(horizon_bars):
+        raise RuntimeError("series too short to reserve a complete label horizon")
+    return pd.Timestamp(pd.to_datetime(x["timestamp"], utc=True).iloc[-(int(horizon_bars) + 1)])
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--output-dir", required=True)
@@ -94,7 +107,6 @@ def main() -> None:
     panels: list[pd.DataFrame] = []
     events: list[pd.DataFrame] = []
     series_rows: list[dict] = []
-    cutoff_by_series: dict[str, pd.Timestamp] = {}
 
     for (venue, symbol), frame in accepted_frames.items():
         if symbol not in eligible_assets:
@@ -104,12 +116,20 @@ def main() -> None:
         f["symbol"] = symbol
         f["series_id"] = f"{venue}::{symbol}"
         series_id = f"{venue}::{symbol}"
-        cutoff = pd.to_datetime(frame["timestamp"], utc=True).max() - pd.Timedelta(hours=4 * policy.label_horizon_bars)
-        cutoff_by_series[series_id] = cutoff
+        cutoff = _label_safe_cutoff(frame, policy.label_horizon_bars)
         panels.append(f)
         e = base._event_labels(f, venue, symbol, cfg)
         if not e.empty:
             e = e[pd.to_datetime(e["signal_time"], utc=True) <= cutoff].copy()
+            # Fail closed: every retained signal must have at least the frozen
+            # number of *actual observed bars* after signal time in its series.
+            ts = pd.DatetimeIndex(pd.to_datetime(frame["timestamp"], utc=True))
+            for signal_time in pd.to_datetime(e["signal_time"], utc=True).unique():
+                pos = int(ts.searchsorted(pd.Timestamp(signal_time), side="left"))
+                if len(ts) - pos - 1 < policy.label_horizon_bars:
+                    raise RuntimeError(
+                        f"incomplete label horizon retained: {series_id} {signal_time}"
+                    )
             events.append(e)
         series_rows.append({
             "venue": venue,
@@ -117,6 +137,7 @@ def main() -> None:
             "series_id": series_id,
             "bars": int(len(frame)),
             "label_cutoff": cutoff,
+            "label_horizon_actual_bars": int(policy.label_horizon_bars),
             "mother_events": int(f["mother_event_v39"].sum()),
         })
 
