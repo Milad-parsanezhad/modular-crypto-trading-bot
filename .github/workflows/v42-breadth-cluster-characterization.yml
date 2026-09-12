@@ -35,12 +35,14 @@ jobs:
       - name: Re-run v0.42 invariants
         run: pytest -q tests/test_breadth_cluster_v42.py tests/test_v41_vectorized_equivalence.py
 
-      - name: Compile characterization runner
-        run: python -m py_compile scripts/run_v42_breadth_cluster_characterization.py
-
-      - name: Run frozen v0.42 development characterization
+      - name: Compile frozen and optimized runners
         run: |
-          python scripts/run_v42_breadth_cluster_characterization.py \
+          python -m py_compile scripts/run_v42_breadth_cluster_characterization.py
+          python -m py_compile scripts/run_v42_breadth_cluster_characterization_fast.py
+
+      - name: Run frozen v0.42 development characterization via equivalent cache path
+        run: |
+          python scripts/run_v42_breadth_cluster_characterization_fast.py \
             --output-dir results/v42_breadth_cluster
 
       - name: Upload v0.42 development evidence
