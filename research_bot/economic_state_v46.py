@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-"""Frozen v0.46 economic-state representation helpers."""
+"""Frozen v0.46 economic-state representation helpers.
+
+The v0.46-specific portfolio allocator below is a numerical-compatibility copy
+of the frozen v0.39 allocator. Its only semantic-neutral change is requesting a
+writable NumPy copy before in-place cap scaling, which is required by pandas 3
+copy-on-write behaviour. Risk formulas and caps remain unchanged.
+"""
 
 from dataclasses import dataclass
 from typing import Iterable
@@ -9,6 +15,12 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import log_loss, roc_auc_score
+
+from research_bot.financial_system_v39 import (
+    FinancialRiskPolicyV39,
+    drawdown_risk_scale,
+    proposed_trade_risk_fraction,
+)
 
 R0 = "R0_FROZEN_THREE_STATE_BASELINE"
 R1 = "R1_FOUR_STATE_TIMEOUT_SIGN"
@@ -152,7 +164,13 @@ def forecast_metrics_v46(y_true: pd.Series, probabilities: pd.DataFrame, states:
     y = y_true.astype(str).to_numpy()
     result: dict[str, float | None] = {"multiclass_brier": multiclass_brier_v46(y_true, probabilities, states)}
     try:
-        result["log_loss"] = float(log_loss(y, matrix, labels=list(states)))
+        # sklearn requires labels in lexicographic order. Reorder the probability
+        # columns to match so this diagnostic does not silently mislabel classes.
+        log_states = tuple(sorted(states))
+        log_matrix = np.column_stack([
+            probabilities[f"p_{s.lower()}_v46"].to_numpy(dtype=float) for s in log_states
+        ])
+        result["log_loss"] = float(log_loss(y, log_matrix, labels=list(log_states)))
     except Exception:
         result["log_loss"] = None
     try:
@@ -174,3 +192,80 @@ def forecast_metrics_v46(y_true: pd.Series, probabilities: pd.DataFrame, states:
     result["mean_reliability"] = float(np.mean(rels))
     result["mean_resolution"] = float(np.mean(ress))
     return result
+
+
+def allocate_portfolio_risk_writable_v46(
+    proposals: pd.DataFrame,
+    *,
+    equity: float,
+    peak: float,
+    open_total_risk_fraction: float = 0.0,
+    open_long_risk_fraction: float = 0.0,
+    open_short_risk_fraction: float = 0.0,
+    policy: FinancialRiskPolicyV39 | None = None,
+) -> pd.DataFrame:
+    """Numerically identical v0.39 allocation with a writable ndarray copy.
+
+    pandas 3 may expose ``Series.to_numpy()`` as read-only. The frozen v0.39
+    allocator scales that array in place. Requesting ``copy=True`` fixes only the
+    memory mutability contract; formulas, ordering and all risk caps are unchanged.
+    """
+
+    p = policy or FinancialRiskPolicyV39()
+    required = {"symbol", "side", "lower_expected_r", "uncertainty_width_r", "stop_fraction"}
+    missing = required - set(proposals.columns)
+    if missing:
+        raise ValueError(f"missing risk proposal columns: {sorted(missing)}")
+
+    x = proposals.copy().reset_index(drop=True)
+    if x.empty:
+        x["allocated_risk_fraction"] = pd.Series(dtype=float)
+        x["position_weight"] = pd.Series(dtype=float)
+        return x
+
+    x["side"] = pd.to_numeric(x["side"], errors="raise").astype(int)
+    if bool((~x["side"].isin([-1, 1])).any()):
+        raise ValueError("side must be -1 or +1")
+
+    x["proposed_risk_fraction"] = [
+        proposed_trade_risk_fraction(
+            lower_expected_r=float(row.lower_expected_r),
+            uncertainty_width_r=float(row.uncertainty_width_r),
+            equity=equity,
+            peak=peak,
+            policy=p,
+        )
+        for row in x.itertuples(index=False)
+    ]
+
+    allocated = x["proposed_risk_fraction"].to_numpy(dtype=float, copy=True)
+    for side, open_risk in ((1, open_long_risk_fraction), (-1, open_short_risk_fraction)):
+        mask = x["side"].to_numpy() == side
+        wanted = float(allocated[mask].sum())
+        available = max(0.0, p.directional_open_risk_cap - float(open_risk))
+        if wanted > available and wanted > 0:
+            allocated[mask] *= available / wanted
+
+    aggregate_available = max(0.0, p.aggregate_open_risk_cap - float(open_total_risk_fraction))
+    dd_scale = drawdown_risk_scale(equity, peak, p)
+    if dd_scale <= 0:
+        aggregate_available = 0.0
+    if peak > 0 and equity > 0:
+        floor_equity = peak * (1.0 - p.hard_drawdown_cap)
+        headroom_fraction = max(0.0, (equity - floor_equity) / equity)
+        aggregate_available = min(aggregate_available, headroom_fraction)
+
+    wanted_total = float(allocated.sum())
+    if wanted_total > aggregate_available and wanted_total > 0:
+        allocated *= aggregate_available / wanted_total
+
+    x["allocated_risk_fraction"] = np.clip(allocated, 0.0, p.max_risk_per_trade)
+    stop = pd.to_numeric(x["stop_fraction"], errors="coerce").replace(0.0, np.nan)
+    nominal_weight = x["allocated_risk_fraction"] / stop.abs()
+    x["position_weight"] = nominal_weight.clip(lower=0.0, upper=p.max_asset_weight).fillna(0.0)
+
+    gross = float(x["position_weight"].sum())
+    if gross > p.max_portfolio_gross and gross > 0:
+        x["position_weight"] *= p.max_portfolio_gross / gross
+
+    return x
