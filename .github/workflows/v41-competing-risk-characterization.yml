@@ -28,14 +28,16 @@ jobs:
       - name: Verify frozen preregistration exists
         run: test -f docs/V41_EVENT_COMPETING_RISK_PREREGISTRATION.md
 
-      - name: Re-run v0.41 invariants
-        run: pytest -q tests/test_event_competing_risk_v41.py tests/test_cli_v41.py
+      - name: Re-run v0.41 invariants and vectorization equivalence
+        run: pytest -q tests/test_event_competing_risk_v41.py tests/test_v41_vectorized_equivalence.py tests/test_cli_v41.py
 
-      - name: Compile characterization runner
-        run: python -m py_compile scripts/run_v41_competing_risk_characterization.py
+      - name: Compile characterization runners
+        run: |
+          python -m py_compile scripts/run_v41_competing_risk_characterization.py
+          python -m py_compile scripts/run_v41_competing_risk_characterization_fast.py
 
       - name: Run frozen v0.41 development characterization
-        run: modular-crypto-bot characterize --version v41 --output-dir results/v41_characterization
+        run: python scripts/run_v41_competing_risk_characterization_fast.py --output-dir results/v41_characterization
 
       - name: Upload v0.41 development evidence
         uses: actions/upload-artifact@v4
