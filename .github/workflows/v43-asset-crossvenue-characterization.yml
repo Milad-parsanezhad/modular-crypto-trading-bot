@@ -1,0 +1,121 @@
+name: v43 Asset Cross-Venue Development Characterization
+
+on:
+  pull_request:
+    branches:
+      - research/v42-breadth-cluster-robust
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare-v43:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
+      - name: Verify frozen lineage and v0.43 invariants
+        run: |
+          test -f docs/V42_RESULTS_2026-09-12.md
+          test -f docs/V43_ASSET_CROSSVENUE_PREREGISTRATION.md
+          pytest -q tests/test_asset_crossvenue_v43.py tests/test_v41_vectorized_equivalence.py
+      - name: Prepare quality-screened v0.43 development data
+        run: |
+          python scripts/prepare_v43_asset_crossvenue_data.py \
+            --output-dir work/prepared
+      - name: Upload v0.43 prepared checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: v43-prepared-data
+          path: work/prepared/
+          if-no-files-found: error
+          retention-days: 7
+
+  fold-v43:
+    needs: prepare-v43
+    strategy:
+      fail-fast: false
+      matrix:
+        fold: [1, 2, 3, 4, 5]
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: Download prepared checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: v43-prepared-data
+          path: work/prepared
+      - name: Run frozen asset-specific fold ${{ matrix.fold }}
+        run: |
+          python scripts/run_v43_fold_from_prepared.py \
+            --input-dir work/prepared \
+            --fold ${{ matrix.fold }} \
+            --output-dir work/fold
+      - name: Upload fold ${{ matrix.fold }} evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v43-fold-${{ matrix.fold }}
+          path: work/fold/
+          if-no-files-found: error
+          retention-days: 7
+
+  finalize-v43:
+    needs: [prepare-v43, fold-v43]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: Download prepared checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: v43-prepared-data
+          path: work/all
+      - name: Download all fold evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: v43-fold-*
+          path: work/all
+          merge-multiple: true
+      - name: Finalize frozen v0.43 decision
+        run: |
+          python scripts/finalize_v43_from_folds.py \
+            --input-dir work/all \
+            --output-dir results/v43_asset_crossvenue
+      - name: Upload canonical v0.43 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v43-asset-crossvenue-characterization
+          path: results/v43_asset_crossvenue/
+          if-no-files-found: error
+          retention-days: 90
