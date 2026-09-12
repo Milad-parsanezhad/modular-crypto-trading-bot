@@ -1,4 +1,4 @@
-name: v43 Preregistration CI
+name: v43 Research CI
 
 on:
   pull_request:
@@ -11,9 +11,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  prereg-v43:
+  validate-v43:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,16 +29,22 @@ jobs:
           pip install -e .
           pip install pytest
 
-      - name: Verify v0.43 preregistration exists
-        run: test -f docs/V43_ASSET_CROSSVENUE_PREREGISTRATION.md
+      - name: Verify frozen lineage and preregistration
+        run: |
+          test -f docs/V42_RESULTS_2026-09-12.md
+          test -f docs/V43_ASSET_CROSSVENUE_PREREGISTRATION.md
 
-      - name: Run v0.43 pre-empirical invariants
-        run: pytest -q tests/test_asset_crossvenue_v43.py
+      - name: Run v0.43 invariants
+        run: pytest -q tests/test_asset_crossvenue_v43.py tests/test_v41_vectorized_equivalence.py
 
-      - name: Compile v0.43 module
-        run: python -m py_compile research_bot/asset_crossvenue_v43.py
+      - name: Compile v0.43 pipeline
+        run: |
+          python -m py_compile research_bot/asset_crossvenue_v43.py
+          python -m py_compile scripts/prepare_v43_asset_crossvenue_data.py
+          python -m py_compile scripts/run_v43_fold_from_prepared.py
+          python -m py_compile scripts/finalize_v43_from_folds.py
 
-      - name: Verify fail-closed v0.43 manifest
+      - name: Verify fail-closed manifest
         run: |
           python - <<'PY'
           from research_bot.asset_crossvenue_v43 import preregistration_manifest_v43
@@ -51,8 +57,3 @@ jobs:
           assert m['outcome_based_asset_pruning'] is False
           assert m['transformer_or_rl_added'] is False
           PY
-
-      - name: Enforce preregistration-only state
-        run: |
-          test ! -f scripts/run_v43_empirical_characterization.py
-          echo 'v0.43 empirical execution intentionally blocked until v0.42 final decision is frozen.'
