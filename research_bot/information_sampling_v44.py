@@ -82,8 +82,6 @@ def _validate_sampling_input(frame: pd.DataFrame) -> pd.DataFrame:
     if missing:
         raise ValueError(f"missing sampling columns: {sorted(missing)}")
 
-    # Fail closed if callers accidentally pass target/economic columns into this
-    # layer.  The sampler must not have access to future audit outcomes.
     forbidden = {
         "outcome", "gross_r", "net_r", "stress_net_r", "exit_time",
         "expected_r", "lower_expected_r", "profit_factor", "candidate_pass",
@@ -122,8 +120,6 @@ def _atr14(frame: pd.DataFrame, window: int) -> pd.Series:
         ],
         axis=1,
     ).max(axis=1)
-    # This ATR is causal.  Sampling thresholds below shift it one more bar so
-    # the threshold used at t is fully fixed before observing bar t.
     return tr.ewm(alpha=1.0 / float(window), adjust=False).mean()
 
 
@@ -147,7 +143,15 @@ def cusum_information_events_v44(
     x = _validate_sampling_input(frame)
     scale = lagged_atr_scale_v44(x, p)
     log_return = np.log(x["close"]).diff()
-    z = log_return / scale.replace(0.0, np.nan)
+    # Frozen preregistration is z_t = r_t / max(scale_t, eps). Preserve NaN
+    # warm-up rows, but floor finite/nonnegative scales only for numerical safety.
+    eps = np.finfo(float).eps
+    safe_scale = scale.copy()
+    finite = np.isfinite(safe_scale.to_numpy(dtype=float))
+    safe_scale.iloc[np.flatnonzero(finite)] = np.maximum(
+        safe_scale.iloc[np.flatnonzero(finite)].to_numpy(dtype=float), eps
+    )
+    z = log_return / safe_scale
 
     pos_sum = 0.0
     neg_sum = 0.0
@@ -168,11 +172,7 @@ def directional_change_events_v44(
     frame: pd.DataFrame,
     policy: InformationSamplingPolicyV44 | None = None,
 ) -> pd.DataFrame:
-    """Causal close-path Directional Change with lagged ATR thresholds.
-
-    Event direction is +1 for an upward change after a down mode and -1 for a
-    downward change after an up mode.  No overshoot information is used.
-    """
+    """Causal close-path Directional Change with lagged ATR thresholds."""
     p = policy or InformationSamplingPolicyV44()
     x = _validate_sampling_input(frame)
     raw_scale = lagged_atr_scale_v44(x, p) * p.dc_atr_multiplier
@@ -182,7 +182,7 @@ def directional_change_events_v44(
 
     event = np.zeros(len(x), dtype=bool)
     direction = np.zeros(len(x), dtype=np.int8)
-    mode = 0  # 0 uninitialized, +1 tracking high, -1 tracking low
+    mode = 0
     high_extreme = float(close[0]) if len(close) else np.nan
     low_extreme = float(close[0]) if len(close) else np.nan
 
@@ -229,7 +229,6 @@ def build_sampling_flags_v44(
     frame: pd.DataFrame,
     policy: InformationSamplingPolicyV44 | None = None,
 ) -> pd.DataFrame:
-    """Return all frozen v0.44 sampling flags without reading any outcome."""
     p = policy or InformationSamplingPolicyV44()
     x = _validate_sampling_input(frame)
     cusum = cusum_information_events_v44(x, p)
