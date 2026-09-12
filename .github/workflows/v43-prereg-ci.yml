@@ -35,12 +35,13 @@ jobs:
           test -f docs/V43_ASSET_CROSSVENUE_PREREGISTRATION.md
 
       - name: Run v0.43 invariants
-        run: pytest -q tests/test_asset_crossvenue_v43.py tests/test_time_cluster_bootstrap_v43.py tests/test_v41_vectorized_equivalence.py
+        run: pytest -q tests/test_asset_crossvenue_v43.py tests/test_time_cluster_bootstrap_v43.py tests/test_event_family_priority_v43.py tests/test_v41_vectorized_equivalence.py
 
       - name: Compile v0.43 pipeline
         run: |
           python -m py_compile research_bot/asset_crossvenue_v43.py
           python -m py_compile research_bot/time_cluster_bootstrap_v43.py
+          python -m py_compile research_bot/event_family_priority_v43.py
           python -m py_compile scripts/prepare_v43_asset_crossvenue_data.py
           python -m py_compile scripts/run_v43_fold_from_prepared.py
           python -m py_compile scripts/finalize_v43_from_folds.py
