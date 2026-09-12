@@ -3,10 +3,12 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from research_bot.economic_state_v46 import forecast_metrics_v46
 from research_bot.probability_calibration_v47 import (
     C0,
     C1,
     C2,
+    COMMON_STATES,
     R1_STATES,
     V47CalibrationPolicy,
     apply_dirichlet_v47,
@@ -14,6 +16,7 @@ from research_bot.probability_calibration_v47 import (
     common_three_state_probabilities_v47,
     fit_dirichlet_v47,
     fit_temperature_v47,
+    forecast_metrics_v47,
     multiclass_nll_v47,
     probability_frame_v47,
     temperature_apply_v47,
@@ -40,7 +43,6 @@ def test_identity_arm_is_exact_copy() -> None:
 
 def test_temperature_probabilities_sum_to_one_and_fit_does_not_worsen_calibration_nll() -> None:
     cal, y = _synthetic_calibration_set()
-    # Make the base probabilities artificially overconfident while preserving ranking.
     logits = np.log(cal)
     overconfident = np.exp(logits / 0.35)
     overconfident /= overconfident.sum(axis=1, keepdims=True)
@@ -108,3 +110,29 @@ def test_probability_frame_uses_frozen_state_order() -> None:
         "p_time_nonpositive_v47",
     ]
     assert np.isclose(float(frame.iloc[0].sum()), 1.0)
+
+
+def test_v47_common_metric_semantics_match_v46_on_identical_probabilities() -> None:
+    y = pd.Series(["TARGET", "STOP", "TIME", "TIME", "TARGET", "STOP"])
+    values = np.array([
+        [0.70, 0.20, 0.10],
+        [0.10, 0.75, 0.15],
+        [0.15, 0.20, 0.65],
+        [0.20, 0.25, 0.55],
+        [0.60, 0.25, 0.15],
+        [0.15, 0.65, 0.20],
+    ], dtype=float)
+    p46 = pd.DataFrame({
+        "p_target_v46": values[:, 0],
+        "p_stop_v46": values[:, 1],
+        "p_time_v46": values[:, 2],
+    })
+    p47 = pd.DataFrame({
+        "p_target_v47": values[:, 0],
+        "p_stop_v47": values[:, 1],
+        "p_time_v47": values[:, 2],
+    })
+    m46 = forecast_metrics_v46(y, p46, COMMON_STATES)
+    m47 = forecast_metrics_v47(y.to_numpy(), p47, COMMON_STATES)
+    for key in ("multiclass_brier", "mean_reliability", "mean_resolution", "macro_ovr_auc"):
+        assert np.isclose(float(m46[key]), float(m47[key]), rtol=0.0, atol=1e-15)
