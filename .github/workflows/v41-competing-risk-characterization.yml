@@ -6,6 +6,10 @@ on:
       - research/v40-two-stage-hurdle
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   characterize-v41:
     runs-on: ubuntu-latest
