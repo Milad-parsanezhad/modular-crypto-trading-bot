@@ -6,9 +6,11 @@ import pandas as pd
 from research_bot.economic_state_v46 import (
     R0,
     R1,
+    allocate_portfolio_risk_writable_v46,
     common_three_state_probabilities_v46,
     encode_state_v46,
     expected_r_from_state_probs_v46,
+    forecast_metrics_v46,
     multiclass_brier_v46,
     reliability_resolution_v46,
 )
@@ -59,3 +61,31 @@ def test_reliability_resolution_finite_nonnegative() -> None:
     assert np.isfinite(rel) and rel >= 0.0
     assert np.isfinite(res) and res >= 0.0
     assert int(bins["n"].sum()) == 4
+
+
+def test_log_loss_diagnostic_respects_lexicographic_class_order() -> None:
+    y = pd.Series(["TARGET", "STOP", "TIME", "TARGET"])
+    p = pd.DataFrame({
+        "p_target_v46": [0.8, 0.1, 0.1, 0.7],
+        "p_stop_v46": [0.1, 0.8, 0.1, 0.2],
+        "p_time_v46": [0.1, 0.1, 0.8, 0.1],
+    })
+    metrics = forecast_metrics_v46(y, p, ("TARGET", "STOP", "TIME"))
+    assert metrics["log_loss"] is not None
+    assert np.isfinite(float(metrics["log_loss"]))
+
+
+def test_writable_governor_compatibility_preserves_frozen_risk_caps() -> None:
+    proposals = pd.DataFrame({
+        "symbol": [f"ASSET{i}/USDT" for i in range(10)],
+        "side": [1] * 10,
+        "lower_expected_r": [0.5] * 10,
+        "uncertainty_width_r": [0.0] * 10,
+        "stop_fraction": [0.02] * 10,
+    })
+    out = allocate_portfolio_risk_writable_v46(proposals, equity=1.0, peak=1.0)
+    # Ten 0.25% proposals exceed the frozen 1.5% same-direction cap, forcing
+    # the exact in-place scaling operation that failed with a read-only array.
+    assert np.isclose(float(out["allocated_risk_fraction"].sum()), 0.015)
+    assert float(out["allocated_risk_fraction"].max()) <= 0.005
+    assert float(out["position_weight"].sum()) <= 0.70 + 1e-12
