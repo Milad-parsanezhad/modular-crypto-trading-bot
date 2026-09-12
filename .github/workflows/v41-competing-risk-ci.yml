@@ -1,0 +1,47 @@
+name: v41 Competing Risk CI
+
+on:
+  pull_request:
+    branches:
+      - research/v40-two-stage-hurdle
+  workflow_dispatch:
+
+jobs:
+  test-v41:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
+
+      - name: Run v0.41 and CLI invariants
+        run: pytest -q tests/test_event_competing_risk_v41.py tests/test_cli_v41.py
+
+      - name: Compile frozen runner
+        run: python -m py_compile scripts/run_v41_competing_risk_characterization.py
+
+      - name: Run bot doctor
+        run: modular-crypto-bot doctor
+
+      - name: Verify v0.41 manifest
+        run: |
+          modular-crypto-bot manifest --version v41 > /tmp/v41_manifest.json
+          python - <<'PY'
+          import json
+          m=json.load(open('/tmp/v41_manifest.json'))
+          assert m['reserved_holdout']=='kraken'
+          assert m['kraken_touched'] is False
+          assert m['paper_execution'] is False
+          assert m['live_execution'] is False
+          PY
