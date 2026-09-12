@@ -59,6 +59,16 @@ Reference: https://pure.fh-ooe.at/en/studentTheses/evaluation-und-backtesting-vo
 
 Reference: https://doi.org/10.1186/s40854-025-00866-w
 
+### Qi (2026), PhD, University of Essex
+**Novel Trading Algorithms augmented by Intrinsic Time and Machine Learning.**
+
+A newly deposited doctoral thesis studies directional-change / intrinsic-time event representations together with machine-learning and reinforcement-learning trading systems. Its limitations explicitly include asset-class/time-span generalizability and compute requirements, while its research direction strengthens the case for testing event-time representations separately from fixed clock-time bars.
+
+**Adopt for v0.44 hypothesis generation only:** compare a frozen asset-specific learner under event-driven sampling / intrinsic-time style triggers against the existing 4h clock-time event stream.  
+**Do not merge into v0.43:** otherwise learning structure and sampling structure change simultaneously.
+
+Reference: https://repository.essex.ac.uk/43797/
+
 ## Useful but not core evidence — DEFER
 
 ### Marinis (2025), MSc, University of Piraeus
@@ -88,6 +98,34 @@ DQN/A2C/PPO/DDPG on BTC/ETH using OHLCV, technical indicators and blockchain met
 
 **Defer:** DRL adds many degrees of freedom and environment-design risk. On-chain features and RL may be separate ablations only after a stable predictive edge is established under the existing gates.
 
+### Juchli (2018), MSc, TU Delft
+**Limit order placement optimization with Deep Reinforcement Learning: Learning from patterns in cryptocurrency market data.**
+
+This thesis developed a broker-like RL environment and DQN-based limit-order placement for BTC. It is valuable primarily as an **execution-layer** precedent, not as evidence that RL discovers directional alpha.
+
+**Defer to execution layer:** if the thesis bot eventually earns paper/live authorization, order placement can be optimized separately from signal generation so alpha and execution are not confounded.
+
+Reference: https://repository.tudelft.nl/record/uuid:e2e99579-541b-4b5a-8cbb-36ea17a4a93a
+
+### Petre-Luca (2026), TU Delft
+**Enhancing Financial Algorithms for Pairs Trading using Reinforcement Learning — Constrained Portfolio Optimization.**
+
+PPO agents were evaluated OOS with and without transaction costs against a classical z-score strategy. The constrained agent learned the spread direction but did not beat the classical rule and tended to over-trade when no arbitrage was available; costs pushed agents toward more conservative policies.
+
+**Adopt as a caution for future RL:** the agent must explicitly learn/permit a no-trade state and must beat a simple benchmark after costs.  
+**Do not add PPO now.**
+
+Reference: https://repository.tudelft.nl/record/uuid:5e3700cc-57b9-4f28-8adc-f3899a202205
+
+### van Oosterhout (2025), TU Delft
+**Feature Engineering in Reinforcement Learning for Algorithmic Trading.**
+
+The thesis reports strong sensitivity to state representation: in its Forex DQN setup, adding more indicators/history could add noise and worsen generalization, while agent-state information such as trade duration could help.
+
+**Adopt as a feature-governance principle:** more features are not automatically better; additions require preregistered ablation and OOS incremental utility. Our competing-risk engine already models duration explicitly, which is consistent with this direction.
+
+Reference: https://repository.tudelft.nl/record/uuid:b50b1185-38d6-4385-a8a5-40ddc67e5567
+
 ## Rejected as immediate next steps
 
 1. **Bigger Transformer/CMamba/PatchTST now** — rejected for v0.43 because current evidence points to temporal/asset transfer instability, not insufficient capacity.
@@ -95,10 +133,11 @@ DQN/A2C/PPO/DDPG on BTC/ETH using OHLCV, technical indicators and blockchain met
 3. **Outcome-based asset pruning** — prohibited; symbol/data screening must never use expectancy, PF, future returns or model score.
 4. **Lowering v0.42 thresholds** — prohibited.
 5. **Using Kraken to choose the next hypothesis** — prohibited; Kraken remains sealed.
+6. **Adding many indicators because they are available** — rejected; new features require incremental-utility ablation because recent RL-thesis evidence shows larger state representations can worsen overfit.
 
 ## Resulting research sequence
 
-- **v0.42:** finish frozen breadth + cluster-robust pooled development test.
+- **v0.42:** frozen result = pooled cross-asset breadth rejected; 4/5 OOS folds negative.
 - **v0.43:** same-asset cross-venue learning + true moving-block perturbation stability + naive Brier-skill benchmark + strict data-quality manifest.
-- **v0.44 (only after v0.43):** isolated information-driven sampling ablation (CUSUM/range/volume/dollar events where data permits) with the model and economic gates held fixed.
+- **v0.44 (only after v0.43):** isolated information-driven/intrinsic-time sampling ablation (CUSUM/range/volume/dollar/directional-change where data permits) with the model and economic gates held fixed.
 - **Future:** on-chain ablation, then LOB/execution layer, then DRL only if a stable predictive/economic edge exists.
