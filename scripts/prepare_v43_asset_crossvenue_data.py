@@ -16,7 +16,8 @@ from research_bot.asset_crossvenue_v43 import (
     data_quality_diagnostics_v43,
     preregistration_manifest_v43,
 )
-from research_bot.event_competing_risk_v41 import V41_FEATURES, attach_event_family_v41
+from research_bot.event_competing_risk_v41 import V41_FEATURES
+from research_bot.event_family_priority_v43 import attach_event_family_priority_v43
 from research_bot.financial_system_v39 import causal_robust_normalize
 from research_bot.mother_strategy_v39 import (
     NEURAL_FEATURES_V39,
@@ -37,7 +38,7 @@ base = v42.base
 def _label_safe_cutoff(frame: pd.DataFrame, horizon_bars: int) -> pd.Timestamp:
     """Latest signal timestamp that still has `horizon_bars` actual future bars.
 
-    v0.39 labels enter on t+1 and may inspect through t+horizon_bars.  A wall-
+    v0.39 labels enter on t+1 and may inspect through t+horizon_bars. A wall-
     clock subtraction is insufficient when the quality policy permits small gaps,
     so this cutoff is based on observed bar position rather than elapsed hours.
     """
@@ -163,7 +164,10 @@ def main() -> None:
     )
     event_frame = event_frame.replace([np.inf, -np.inf], np.nan)
     event_frame[feature_cols] = event_frame[feature_cols].fillna(0.0).astype("float32")
-    event_frame = attach_event_family_v41(panel, event_frame)
+
+    # Prospectively fix the documented first-match priority semantics. Frozen
+    # v0.41/v0.42 historical outputs are not rewritten.
+    event_frame = attach_event_family_priority_v43(panel, event_frame)
     missing = sorted(set(V41_FEATURES) - set(event_frame.columns))
     if missing:
         raise RuntimeError(f"missing frozen v0.41 features: {missing}")
@@ -195,6 +199,7 @@ def main() -> None:
         "eligible_assets": list(eligible_assets),
         "settled_events": int(len(event_frame)),
         "folds": len(folds),
+        "event_family_priority": "FIRST_MATCH_V43_CORRECTED",
         "kraken_touched": False,
     }
     (outdir / "prep_status_v43.json").write_text(json.dumps(status, indent=2, sort_keys=True), encoding="utf-8")
