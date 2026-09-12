@@ -84,7 +84,7 @@ def cmd_characterize(args: argparse.Namespace) -> int:
     scripts = {
         "v39": ROOT / "scripts" / "run_v39_development_characterization_corrected.py",
         "v40": ROOT / "scripts" / "run_v40_two_stage_characterization.py",
-        "v41": ROOT / "scripts" / "run_v41_competing_risk_characterization.py",
+        "v41": ROOT / "scripts" / "run_v41_competing_risk_characterization_fast.py",
     }
     script = scripts[args.version]
     if not script.exists():
