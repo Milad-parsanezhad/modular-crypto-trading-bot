@@ -132,6 +132,20 @@ Forecast skill is a required gate, not a descriptive metric.
 - calibration remains separate from test;
 - test outcomes are never used for sampling thresholds, normalization, fit, calibration or asset eligibility.
 
+### Common fold-boundary rule — frozen before empirical evaluation
+
+Sampling variants MUST NOT create their own time folds after filtering. That would confound the sampling ablation by exposing each variant to different test periods.
+
+The exact rule is:
+1. Build the fully settled, quality-screened **S0 clock-time mother-event baseline** first.
+2. Compute the five purged fit/calibration/test timestamp boundaries **once from S0**, before applying S1 or S2 sampling masks.
+3. Store those common boundaries in the prepared-data manifest and hash them.
+4. Apply S0/S1/S2 masks **inside the same frozen fit/calibration/test windows**.
+5. A sparse variant may have fewer events or unsupported assets inside a fold, but it may not shift, rebuild, merge or skip the common fold boundary to improve support.
+6. If a variant lacks the preregistered fold-local support inside a common window, that asset/variant/fold fails closed.
+
+Thus all three variants face the same chronological market regimes and OOS periods.
+
 ## Economic gates
 
 Per development venue, retain the frozen qualification gates:
@@ -182,6 +196,7 @@ No post-result changes under experiment v0.44 to:
 - CUSUM threshold;
 - Directional-Change threshold definition;
 - event-window tolerance;
+- common fold boundaries;
 - features;
 - labels;
 - model capacity;
