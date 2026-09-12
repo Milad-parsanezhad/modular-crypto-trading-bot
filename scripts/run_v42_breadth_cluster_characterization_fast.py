@@ -2,20 +2,21 @@ from __future__ import annotations
 
 """Compute-optimized wrapper for the frozen v0.42 characterization.
 
-Scientific protocol is unchanged.  This wrapper memoizes two deterministic,
-seed-independent design expansions used repeatedly by the v0.41 competing-risk
-engine:
+Scientific protocol is unchanged. This wrapper performs only two engineering
+optimizations:
 
-1) the discrete-time hazard training table for a given fold; and
-2) the event-level design matrix for a given DataFrame object.
+1) memoize deterministic, seed-independent competing-risk design expansions;
+2) fetch the three independent development venues concurrently, while keeping
+   every symbol fetch sequential and rate-limited *within each venue*.
 
-The cached arrays are byte-for-byte outputs of the original functions.  No
-feature, label, threshold, seed, fold, venue, symbol, cost, gate, or model
-hyperparameter is changed.
+No feature, label, threshold, seed, fold, venue, symbol, cost, gate, eligibility
+rule, model architecture, or hyperparameter is changed. Availability rows are
+reassembled in the original frozen venue/symbol order.
 """
 
 import importlib.util
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Sequence
 
@@ -75,9 +76,7 @@ def _cached_event(events: pd.DataFrame, feature_columns: Sequence[str]):
     return value
 
 
-# Patch only deterministic representation builders before loading the frozen
-# v0.42 runner.  Functions imported later by the vectorized predictor resolve
-# these exact cached functions; numerical model fitting remains untouched.
+# Patch deterministic representation builders before loading the frozen runner.
 cr.build_hazard_training_table_v41 = _cached_hazard
 cr.event_design_matrix_v41 = _cached_event
 
@@ -88,6 +87,83 @@ if spec is None or spec.loader is None:
     raise RuntimeError("cannot load frozen v0.42 characterization runner")
 runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
+
+
+def _fetch_one_venue(venue: str):
+    if venue == runner.V42_RESERVED_HOLDOUT:
+        raise RuntimeError("Kraken is sealed in v0.42")
+    ex = runner.base._exchange(venue)
+    markets = ex.load_markets()
+    local_frames: dict[tuple[str, str], pd.DataFrame] = {}
+    local_bars: dict[str, int] = {}
+    local_rows: list[dict] = []
+    for symbol in runner.V42_SYMBOL_CANDIDATES:
+        if symbol not in markets:
+            local_bars[symbol] = 0
+            local_rows.append({
+                "venue": venue,
+                "symbol": symbol,
+                "available": False,
+                "bars": 0,
+                "first_bar": None,
+                "last_bar": None,
+                "eligibility_reason": "MISSING_MARKET",
+            })
+            continue
+        try:
+            frame = runner.base.fetch_fixed_ohlcv(ex, symbol)
+        except Exception as exc:
+            local_bars[symbol] = 0
+            local_rows.append({
+                "venue": venue,
+                "symbol": symbol,
+                "available": False,
+                "bars": 0,
+                "first_bar": None,
+                "last_bar": None,
+                "eligibility_reason": f"FETCH_OR_HISTORY_ERROR:{type(exc).__name__}",
+            })
+            continue
+        local_frames[(venue, symbol)] = frame
+        local_bars[symbol] = int(len(frame))
+        local_rows.append({
+            "venue": venue,
+            "symbol": symbol,
+            "available": True,
+            "bars": int(len(frame)),
+            "first_bar": frame["timestamp"].iloc[0],
+            "last_bar": frame["timestamp"].iloc[-1],
+            "eligibility_reason": "AVAILABLE",
+        })
+    return venue, local_frames, local_bars, local_rows
+
+
+def _parallel_fetch_availability():
+    frames: dict[tuple[str, str], pd.DataFrame] = {}
+    bars: dict[str, dict[str, int]] = {v: {} for v in runner.V42_DEVELOPMENT_VENUES}
+    rows_by_venue: dict[str, list[dict]] = {}
+    payload_by_venue = {}
+    with ThreadPoolExecutor(max_workers=len(runner.V42_DEVELOPMENT_VENUES)) as pool:
+        futures = {
+            venue: pool.submit(_fetch_one_venue, venue)
+            for venue in runner.V42_DEVELOPMENT_VENUES
+        }
+        # Resolve futures in frozen venue order so raised errors and assembled
+        # metadata remain deterministic even though network work is concurrent.
+        for venue in runner.V42_DEVELOPMENT_VENUES:
+            payload_by_venue[venue] = futures[venue].result()
+
+    rows: list[dict] = []
+    for venue in runner.V42_DEVELOPMENT_VENUES:
+        _, local_frames, local_bars, local_rows = payload_by_venue[venue]
+        frames.update(local_frames)
+        bars[venue] = local_bars
+        rows_by_venue[venue] = local_rows
+        rows.extend(local_rows)
+    return frames, bars, pd.DataFrame(rows)
+
+
+runner._fetch_availability = _parallel_fetch_availability
 
 
 if __name__ == "__main__":
