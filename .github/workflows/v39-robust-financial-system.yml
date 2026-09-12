@@ -25,16 +25,26 @@ jobs:
           pip install -e .
           pip install pytest
 
-      - name: Run v0.39 financial-system invariants
-        run: pytest -q tests/test_financial_system_v39.py
+      - name: Run v0.39 financial and mother-strategy invariants
+        run: |
+          pytest -q \
+            tests/test_financial_system_v39.py \
+            tests/test_mother_strategy_v39.py
 
-      - name: Verify v0.39 manifest is importable
+      - name: Verify v0.39 manifests are importable
         run: |
           python - <<'PY'
           from research_bot.financial_system_v39 import preregistration_manifest_v39
-          m = preregistration_manifest_v39()
-          assert m['kraken_touched'] is False
-          assert m['paper_execution'] is False
-          assert m['live_execution'] is False
-          print(m)
+          from research_bot.mother_strategy_v39 import mother_strategy_manifest_v39
+          finance = preregistration_manifest_v39()
+          mother = mother_strategy_manifest_v39()
+          assert finance['kraken_touched'] is False
+          assert finance['paper_execution'] is False
+          assert finance['live_execution'] is False
+          assert mother['kraken_holdout'] == 'SEALED'
+          assert mother['paper_execution'] is False
+          assert mother['live_execution'] is False
+          assert mother['hard_k_of_n_gate'] is False
+          print(finance)
+          print(mother)
           PY
