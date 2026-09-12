@@ -20,6 +20,7 @@ def test_timestamp_cluster_bootstrap_is_deterministic_and_cluster_safe() -> None
     c, _=timestamp_cluster_block_resample_v43(x, seed=1618, target_block_events=64)
     assert a.equals(b)
     assert da == db
+    assert da.circular_wrap_used is False
     assert not a.equals(c)
     assert len(a) >= len(x)
     original=x.groupby('signal_time').size().to_dict()
@@ -31,7 +32,8 @@ def test_timestamp_cluster_bootstrap_is_deterministic_and_cluster_safe() -> None
 def test_timestamp_cluster_bootstrap_never_reads_outcomes() -> None:
     x=_events()
     x['outcome']='STOP'
-    a,_=timestamp_cluster_block_resample_v43(x, seed=2718)
+    a,da=timestamp_cluster_block_resample_v43(x, seed=2718)
     x['outcome']='TARGET'
-    b,_=timestamp_cluster_block_resample_v43(x, seed=2718)
+    b,db=timestamp_cluster_block_resample_v43(x, seed=2718)
+    assert da.circular_wrap_used is False and db.circular_wrap_used is False
     assert a[['signal_time','venue','x']].equals(b[['signal_time','venue','x']])
