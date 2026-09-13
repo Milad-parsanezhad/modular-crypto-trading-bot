@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.4",
+  "maturity_tier": "POINT_IN_TIME_ALPHA_ABLATION",
+  "evidence_class": "VERIFIED_CANONICAL",
+  "evaluation_basis": "Assessed for archive integrity, point-in-time alignment and incremental OOS information under multiplicity correction.",
+  "original_objective": "Backfill archive-based order flow/OI and test Funding, Basis, OI and Order Flow incrementally against a fixed baseline.",
+  "scope": {"date": "2026-09-06", "primary_venue": "CoinEx", "cross_venue_source": "Binance Vision", "symbols": ["BTC/USDT"], "timeframe": "4h", "common_panel_rows": 6538, "oos_rows_per_variant": 4328},
+  "engineering_result": {"status": "PASS_WITH_REPRODUCIBILITY_GAP", "summary": "36 monthly order-flow archives passed checksums and 365 daily OI archives were point-in-time shifted; OI checksum verification was not enabled."},
+  "scientific_result": {"status": "NO_INCREMENTAL_ALPHA_FAMILY", "summary": "No feature family passed the prespecified incremental-alpha gate. Basis and order flow improved point estimates but bootstrap intervals crossed zero after BH correction."},
+  "economic_result": {"status": "NEGATIVE", "summary": "Every strategy remained loss-making; baseline -50.81%, Basis -45.89%, Order Flow -42.50%, and OI recent-panel -26.68%."},
+  "provenance": {"run_id": 34051974380, "source_commit": "90cf5bb04fc90cb79801c3dada2b9ca553552c4f", "artifact_id": null, "strength": "COMMIT_AND_WORKFLOW_RUN"},
+  "safety": {"paper_execution": false, "live_execution": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["Cross-venue order-flow proxy rather than L2/L3", "OI archive checksums absent", "Single BTC formulation", "One-bar target", "Strong fold instability"],
+  "contribution_to_next_version": "Identified regime dependence as a prospective question and justified v0.5 regime/horizon/robustness analysis.",
+  "classifications": ["ENGINEERING_PARTIAL", "SCIENTIFIC_METHOD_PASS", "HYPOTHESIS_REJECTED", "DIAGNOSTIC_SUCCESS", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["results/V04_RESULTS_2026-09-06.md", "docs/V04_METHOD.md"]
+}
