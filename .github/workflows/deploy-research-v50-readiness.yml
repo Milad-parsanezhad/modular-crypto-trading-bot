@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'research_bot/**'
+      - 'evidence/**'
+      - 'scripts/validate_evidence_ledger.py'
       - 'tests/**'
       - 'pyproject.toml'
       - 'railway.toml'
@@ -41,6 +43,7 @@ jobs:
           PAPER_EXECUTION: 'false'
         run: |
           python -m compileall -q research_bot scripts
+          python scripts/validate_evidence_ledger.py
           pytest -q
 
       - name: Verify fail-closed import guard

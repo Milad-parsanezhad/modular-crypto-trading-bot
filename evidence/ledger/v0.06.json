@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.6",
+  "maturity_tier": "CROSS_SECTIONAL_REPLICATION",
+  "evidence_class": "VERIFIED_REPOSITORY_RECORD",
+  "evaluation_basis": "Assessed for implementing the frozen cross-sectional 8h perpetual research design; absent empirical outputs are not inferred.",
+  "original_objective": "Test funding/premium crowding cross-sectionally on an 8h settlement clock and independently revisit the OI-Bear discovery.",
+  "scope": {"planned_start": "2022-01", "timeframe": "8h settlement", "planned_universe": "12 liquid perpetual candidates", "one_way_fee_bps": 4, "one_way_slippage_bps": 2},
+  "engineering_result": {"status": "IMPLEMENTATION_RECORDED", "summary": "The repository contains the frozen runner and regression tests, including UTC normalization and non-overlapping 24h portfolio evaluation."},
+  "scientific_result": {"status": "INSUFFICIENT_RETRIEVED_EVIDENCE", "summary": "No canonical empirical values, workflow run ID or artifact digest are available in the present repository evidence set; no alpha conclusion is assigned."},
+  "economic_result": {"status": "UNVERIFIED", "summary": "The available record does not support a verified net-performance statement; reported PnL design also excluded perpetual funding cashflows."},
+  "provenance": {"run_id": null, "source_commit": "4d86e29fde263c7d570c671d0e1ba61311075d61", "artifact_id": null, "strength": "COMMIT_AND_IMPLEMENTATION_WITHOUT_CANONICAL_RESULT"},
+  "safety": {"paper_execution": false, "live_execution": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["Canonical result artifact not present", "Run ID unavailable", "Funding cashflows excluded from reported PnL design", "Initial universe smaller than planned 19-30"],
+  "contribution_to_next_version": "Established the cross-sectional settlement-clock implementation and exposed the need for a fully reproducible real-data rerun.",
+  "classifications": ["ENGINEERING_PARTIAL", "INSUFFICIENT_EVIDENCE", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["scripts/run_cross_sectional_v06.py", "tests/test_cross_sectional_v06.py"]
+}

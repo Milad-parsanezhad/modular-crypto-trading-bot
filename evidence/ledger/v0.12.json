@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.12",
+  "maturity_tier": "EXTERNAL_UNTOUCHED_DERIVATIVES_HOLDOUT",
+  "evidence_class": "VERIFIED_CANONICAL",
+  "evaluation_basis": "Assessed against the preregistered untouched 8h Binance Vision holdout and incremental feature-family gates; the spent holdout is not retuned.",
+  "original_objective": "Test whether Ichimoku and point-in-time funding/premium/order-flow/OI features add net alpha over price-only models on an external perpetuals holdout.",
+  "scope": {"date": "2026-09-09", "provider": "Binance Vision USD-M", "perpetuals": 12, "feature_rows": 13128, "synchronized_timestamps": 1094, "holdout": "2026-06-01 16:00 UTC to 2026-08-31 16:00 UTC", "holdout_rebalances": 274, "one_way_cost_bps": 8, "seeds": [11, 42, 101]},
+  "engineering_result": {"status": "PASS_FOR_STAGE", "summary": "All 12 symbols, point-in-time derivative features, fixed models, explicit costs, bootstrap/FDR and immutable artifact production completed successfully."},
+  "scientific_result": {"status": "NO_INCREMENTAL_DERIVATIVES_EVIDENCE", "summary": "Neither full nor derivatives-only learned variants established positive incremental alpha over price-only; the external holdout was frozen as spent."},
+  "economic_result": {"status": "NEGATIVE", "summary": "Logistic price-only -5.19%/Sharpe -0.192; full -5.85%/-0.298; price+derivatives -16.58%/-1.395. Full-minus-price-only CI [-0.000640, +0.000447], q=0.9468."},
+  "provenance": {"run_id": 34318656074, "source_commit": null, "artifact_id": null, "artifact_name": "v12-derivatives-external-holdout", "strength": "WORKFLOW_ARTIFACT_AND_RESULT_DOCUMENT"},
+  "safety": {"paper_execution": false, "live_execution": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["Kline taker-buy proxy rather than reconstructed fine microstructure", "Only 274 holdout rebalances", "Three seeds were effectively deterministic for the tested estimators", "Regime positives were diagnostic only", "Holdout cannot be reused for tuning"],
+  "contribution_to_next_version": "Closed this holdout honestly and redirected work to prospective microstructure/forward evidence rather than tuning a negative result.",
+  "classifications": ["ENGINEERING_PASS", "SCIENTIFIC_METHOD_PASS", "HYPOTHESIS_REJECTED", "DIAGNOSTIC_SUCCESS", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/V12_DERIVATIVES_EXTERNAL_HOLDOUT_RESULTS_2026-09-09.md", "docs/V12_DERIVATIVES_EXTERNAL_HOLDOUT_PROTOCOL.md"]
+}
