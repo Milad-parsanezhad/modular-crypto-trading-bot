@@ -14,6 +14,7 @@ on:
       - 'tests/test_multiframework_features_v53.py'
       - 'tests/test_v53_candle_zone_mtf.py'
       - 'tests/test_v53_confluence_forward.py'
+      - 'tests/test_v53_confluence_missing.py'
       - '.github/workflows/v53-rebuild-integrity.yml'
   push:
     branches: ["rebuild/pr64-causal-mtf-v53"]
@@ -44,7 +45,8 @@ jobs:
           pytest -q \
             tests/test_multiframework_features_v53.py \
             tests/test_v53_candle_zone_mtf.py \
-            tests/test_v53_confluence_forward.py
+            tests/test_v53_confluence_forward.py \
+            tests/test_v53_confluence_missing.py
       - name: Full repository suite
         run: |
           pytest -q
