@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.10",
+  "maturity_tier": "LIVE_UNIVERSE_PURGED_OOS_TOURNAMENT",
+  "evidence_class": "VERIFIED_CANONICAL",
+  "evaluation_basis": "Assessed for live public-universe eligibility, purged OOS comparison, cost accounting and fold-stable superiority over simple baselines.",
+  "original_objective": "Compare Logistic, HGB and Random Forest with Momentum, Ichimoku and Equal-Weight baselines across an eligible multi-asset universe.",
+  "scope": {"date": "2026-09-08", "discovered_listings": 15801, "unique_assets": 3798, "eligible_assets": 17, "timeframe": "4h", "panel_rows": 25483, "synchronized_timestamps": 1619, "oos_folds": 3, "one_way_cost_bps": 12},
+  "engineering_result": {"status": "PASS_FOR_STAGE", "summary": "Collection, eligibility, purged OOS tournament, evidence validation and artifact upload passed; the v0.9 pagination defect was corrected first."},
+  "scientific_result": {"status": "NO_MODEL_PROMOTED", "summary": "Logistic was the best learned model but failed clear baseline superiority and fold-stability gates; Ichimoku survived only as an unstable baseline/challenger."},
+  "economic_result": {"status": "MIXED_AGGREGATE_UNSTABLE", "summary": "Ichimoku +32.04%/Sharpe 1.578, Equal Weight +24.90%/1.512, Logistic +8.97%/0.717; HGB -39.94% and RF -37.52%. Aggregate positives were regime/fold concentrated."},
+  "provenance": {"run_id": 34219431117, "source_commit": null, "artifact_id": null, "strength": "WORKFLOW_RUN_AND_RESULT_DOCUMENT"},
+  "safety": {"paper_execution": false, "live_execution": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["Only three OOS folds", "AUC values near 0.5", "Large drawdowns", "Strong fold/regime concentration", "No statistical robustness stage yet"],
+  "contribution_to_next_version": "Selected multi-seed bootstrap/FDR and regime analysis as v0.11 rather than routing the aggregate winner to execution.",
+  "classifications": ["ENGINEERING_PASS", "SCIENTIFIC_METHOD_PASS", "INSUFFICIENT_EVIDENCE", "DIAGNOSTIC_SUCCESS", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/V10_OOS_TOURNAMENT_RESULTS_2026-09-08.md"]
+}
