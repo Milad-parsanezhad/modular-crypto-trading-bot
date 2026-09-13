@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.2",
+  "maturity_tier": "REPLICATION_AND_LABELING",
+  "evidence_class": "VERIFIED_CANONICAL",
+  "evaluation_basis": "Assessed for replication, causal labeling and abstention discipline; profitability was a tested hypothesis, not a required engineering outcome.",
+  "original_objective": "Replicate v0.1 and introduce CUSUM sampling, Triple Barrier labels, purging and a stricter abstention gate.",
+  "scope": {"date": "2026-09-06", "venue": ["CoinEx"], "symbols": ["BTC/USDT"], "timeframe": "4h", "bars_returned": 1000, "cusum_events": 392, "usable_events": 184, "train_events_after_purge": 116, "test_events": 56, "trades": 18},
+  "engineering_result": {"status": "PASS_FOR_STAGE", "summary": "CUSUM, non-overlapping/non-ambiguous Triple Barrier labeling, purging and abstention executed on real data; the 1000-bar source ceiling remained explicit."},
+  "scientific_result": {"status": "HYPOTHESIS_REJECTED", "summary": "Improved sampling and labeling did not turn the weak OHLCV/technical feature family into alpha."},
+  "economic_result": {"status": "NEGATIVE", "summary": "Net event-equity return -5.60%, mean event return -0.102%, hit rate 10.71% and MDD -6.08%."},
+  "provenance": {"run_id": 34048370891, "source_commit": "b3b9477a8f7ad585c310f338f8635f43036ba22b", "artifact_id": null, "strength": "COMMIT_AND_WORKFLOW_RUN"},
+  "safety": {"paper_execution": false, "live_execution": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["Only 1000 unique bars", "56 test events and 18 trades", "No CPCV/PBO/DSR", "Same weak feature family", "No market-impact model"],
+  "contribution_to_next_version": "Separated methodological quality from alpha and defined the v0.3 long-history/multi-source data requirement.",
+  "classifications": ["ENGINEERING_PASS", "SCIENTIFIC_METHOD_PASS", "HYPOTHESIS_REJECTED", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/RESULTS_V02_2026-09-06.md", "docs/COLAB_AUDIT_2026-09-06.md"]
+}
