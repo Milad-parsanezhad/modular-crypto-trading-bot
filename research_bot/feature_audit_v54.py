@@ -11,6 +11,11 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from .backtest import performance_metrics
+from .v54_integrity import (
+    V54FeatureHealthConfig,
+    feature_health_v54,
+    moving_block_mean_ci_v54,
+)
 
 
 FAMILY_PREFIXES: dict[str, tuple[str, ...]] = {
@@ -39,6 +44,12 @@ class V54AuditConfig:
     min_features_per_family: int = 2
     timeframe: str = "1h"
     decision_time_col: str = "decision_at"
+    bootstrap_resamples: int = 2000
+    bootstrap_block: int = 24
+    bootstrap_seed: int = 54054
+    health_max_missing_fraction: float = 0.95
+    health_min_non_null: int = 60
+    health_min_variance: float = 1e-14
 
     def __post_init__(self) -> None:
         if self.horizon_bars <= 0 or self.min_train_rows < 100 or self.test_rows < 30 or self.step_rows <= 0:
@@ -51,14 +62,19 @@ class V54AuditConfig:
             raise ValueError("cost grid must be non-negative")
         if not self.decision_time_col:
             raise ValueError("decision_time_col required")
+        if self.bootstrap_resamples < 100:
+            raise ValueError("bootstrap_resamples must be >=100")
+        if self.bootstrap_block <= 0:
+            raise ValueError("bootstrap_block must be positive")
 
 
 def stable_audit_fingerprint(frame: pd.DataFrame) -> str:
-    required = [c for c in ("timestamp", "open", "high", "low", "close", "volume") if c in frame.columns]
-    if "timestamp" not in required:
-        raise ValueError("timestamp required for audit fingerprint")
+    required = [c for c in ("timestamp", "decision_at", "open", "high", "low", "close", "volume") if c in frame.columns]
+    if "timestamp" not in required or "decision_at" not in required:
+        raise ValueError("timestamp and decision_at required for audit fingerprint")
     x = frame[required].copy()
     x["timestamp"] = pd.to_datetime(x["timestamp"], utc=True, errors="raise").astype(str)
+    x["decision_at"] = pd.to_datetime(x["decision_at"], utc=True, errors="raise").astype(str)
     raw = x.to_csv(index=False, float_format="%.12g", lineterminator="\n").encode("utf-8")
     return sha256(raw).hexdigest()
 
@@ -85,8 +101,15 @@ def feature_families_v54(frame: pd.DataFrame, *, min_features: int = 2) -> dict[
     numeric = _numeric_feature_columns(frame)
     families: dict[str, list[str]] = {}
     claimed: set[str] = set()
-    for name, prefixes in FAMILY_PREFIXES.items():
-        cols = [c for c in numeric if c.startswith(prefixes)]
+    # HTF must claim 4h-prefixed columns before local families can claim nested
+    # names such as 4h_ichi_*.
+    htf_cols = [c for c in numeric if c.startswith("4h_")]
+    if len(htf_cols) >= min_features:
+        families["HTF"] = htf_cols
+        claimed.update(htf_cols)
+    for name in ("SMC_ICT", "BROOKS", "ICHIMOKU"):
+        prefixes = FAMILY_PREFIXES[name]
+        cols = [c for c in numeric if c not in claimed and c.startswith(prefixes)]
         if len(cols) >= min_features:
             families[name] = cols
             claimed.update(cols)
@@ -135,13 +158,26 @@ def expanding_folds_v54(n: int, cfg: V54AuditConfig) -> list[tuple[slice, slice]
     return folds
 
 
+def _health_config(cfg: V54AuditConfig) -> V54FeatureHealthConfig:
+    return V54FeatureHealthConfig(
+        max_missing_fraction=cfg.health_max_missing_fraction,
+        min_non_null=cfg.health_min_non_null,
+        min_variance=cfg.health_min_variance,
+    )
+
+
 def _backtest_predictions(test: pd.DataFrame, pred: np.ndarray, cost_bps: float, *, decision_time_col: str) -> pd.DataFrame:
     if len(test) != len(pred):
         raise ValueError("prediction length mismatch")
     position = np.sign(np.asarray(pred, dtype=float))
     previous = np.concatenate([[0.0], position[:-1]])
     turnover = np.abs(position - previous)
+    # Each round-trip assumption is split into one-way friction. A -1 -> +1 flip
+    # has turnover=2 and therefore pays a full round-trip cost. Force liquidation
+    # of the final position so fold-end cost is never omitted.
     one_way = float(cost_bps) / 20_000.0
+    if len(turnover):
+        turnover[-1] += abs(float(position[-1]))
     gross = position * test["future_return"].to_numpy(dtype=float)
     net = gross - turnover * one_way
     return pd.DataFrame({
@@ -178,9 +214,13 @@ def _run_variant(panel: pd.DataFrame, features: list[str], cfg: V54AuditConfig) 
             continue
         if train.index.max() >= test.index.min() - cfg.purge_bars:
             raise AssertionError("purge invariant violated")
+        health = feature_health_v54(train, features, _health_config(cfg))
+        healthy = list(health["healthy_features"])
+        if not healthy:
+            raise ValueError(f"no healthy train-only features in fold {fold_id}")
         model = _ridge(cfg.ridge_alpha)
-        model.fit(train[features], train["future_return"].astype(float))
-        pred = np.asarray(model.predict(test[features]), dtype=float)
+        model.fit(train[healthy], train["future_return"].astype(float))
+        pred = np.asarray(model.predict(test[healthy]), dtype=float)
         if not np.isfinite(pred).all():
             raise ValueError("non-finite predictions")
         fold_row = {
@@ -191,19 +231,26 @@ def _run_variant(panel: pd.DataFrame, features: list[str], cfg: V54AuditConfig) 
             "test_end": pd.Timestamp(test[cfg.decision_time_col].iloc[-1]).isoformat(),
             "train_rows": int(len(train)),
             "test_rows": int(len(test)),
+            "healthy_feature_count": int(len(healthy)),
+            "rejected_feature_count": int(len(health["rejected_features"])),
+            "rejected_features": list(health["rejected_features"]),
         }
         for cost in cfg.round_trip_cost_bps:
             bt = _backtest_predictions(test, pred, cost, decision_time_col=cfg.decision_time_col)
+            bt["fold"] = fold_id
             combined[cost].append(bt)
             fold_row[f"cost_{cost:g}"] = _metrics(bt, cfg.timeframe)
         fold_rows.append(fold_row)
     aggregate: dict[str, dict] = {}
+    oos: dict[str, pd.DataFrame] = {}
     for cost, parts in combined.items():
         if not parts:
             continue
-        z = pd.concat(parts, ignore_index=True).sort_values("decision_at").reset_index(drop=True)
-        aggregate[f"cost_{cost:g}"] = _metrics(z, cfg.timeframe)
-    return {"features": features, "folds": fold_rows, "aggregate": aggregate}
+        z = pd.concat(parts, ignore_index=True).sort_values(["decision_at", "fold"]).reset_index(drop=True)
+        key = f"cost_{cost:g}"
+        aggregate[key] = _metrics(z, cfg.timeframe)
+        oos[key] = z
+    return {"features": features, "folds": fold_rows, "aggregate": aggregate, "_oos": oos}
 
 
 def _finite_metric(value) -> float:
@@ -212,6 +259,20 @@ def _finite_metric(value) -> float:
     except (TypeError, ValueError):
         return 0.0
     return value if np.isfinite(value) else 0.0
+
+
+def _paired_inference(all_bt: pd.DataFrame, drop_bt: pd.DataFrame, cfg: V54AuditConfig, *, family_index: int) -> dict:
+    left = all_bt[["decision_at", "fold", "net_return"]].rename(columns={"net_return": "all_net"})
+    right = drop_bt[["decision_at", "fold", "net_return"]].rename(columns={"net_return": "drop_net"})
+    paired = left.merge(right, on=["decision_at", "fold"], how="inner", validate="one_to_one")
+    if len(paired) != len(left) or len(paired) != len(right):
+        raise AssertionError("paired OOS alignment failed")
+    return moving_block_mean_ci_v54(
+        paired["all_net"] - paired["drop_net"],
+        resamples=cfg.bootstrap_resamples,
+        block=cfg.bootstrap_block,
+        seed=cfg.bootstrap_seed + int(family_index),
+    )
 
 
 def audit_feature_families_v54(frame: pd.DataFrame, config: V54AuditConfig | None = None) -> dict:
@@ -224,22 +285,40 @@ def audit_feature_families_v54(frame: pd.DataFrame, config: V54AuditConfig | Non
         **{f"ONLY_{name}": cols for name, cols in families.items()},
         **{f"DROP_{name}": [c for c in all_features if c not in set(cols)] for name, cols in families.items()},
     }
-    results = {name: _run_variant(panel, cols, cfg) for name, cols in variants.items() if cols}
+    raw_results = {name: _run_variant(panel, cols, cfg) for name, cols in variants.items() if cols}
 
     base_key = "cost_24" if 24.0 in cfg.round_trip_cost_bps else f"cost_{cfg.round_trip_cost_bps[0]:g}"
-    all_sharpe = _finite_metric(results["ALL"]["aggregate"].get(base_key, {}).get("sharpe"))
+    all_sharpe = _finite_metric(raw_results["ALL"]["aggregate"].get(base_key, {}).get("sharpe"))
     family_value: dict[str, dict] = {}
-    for name in families:
-        drop = results.get(f"DROP_{name}", {}).get("aggregate", {}).get(base_key, {})
-        only = results.get(f"ONLY_{name}", {}).get("aggregate", {}).get(base_key, {})
+    for family_index, name in enumerate(families):
+        drop_result = raw_results.get(f"DROP_{name}")
+        only_result = raw_results.get(f"ONLY_{name}")
+        drop = (drop_result or {}).get("aggregate", {}).get(base_key, {})
+        only = (only_result or {}).get("aggregate", {}).get(base_key, {})
         drop_sharpe = _finite_metric(drop.get("sharpe"))
         only_sharpe = _finite_metric(only.get("sharpe"))
+        inference = None
+        if drop_result and base_key in raw_results["ALL"]["_oos"] and base_key in drop_result["_oos"]:
+            inference = _paired_inference(
+                raw_results["ALL"]["_oos"][base_key],
+                drop_result["_oos"][base_key],
+                cfg,
+                family_index=family_index,
+            )
         family_value[name] = {
             "all_minus_drop_sharpe": all_sharpe - drop_sharpe,
             "only_family_sharpe": only_sharpe,
             "positive_increment": bool(all_sharpe > drop_sharpe),
+            "paired_net_return_inference": inference,
         }
 
+    # Remove in-memory return series from the serializable artifact after paired
+    # inference has been calculated.
+    results: dict[str, dict] = {}
+    for name, result in raw_results.items():
+        results[name] = {k: v for k, v in result.items() if k != "_oos"}
+
+    global_health = feature_health_v54(panel, all_features, _health_config(cfg))
     return {
         "experiment": "V54_FEATURE_FAMILY_WALK_FORWARD_AUDIT",
         "status": "RESEARCH_ONLY_NO_EXECUTION_AUTHORIZATION",
@@ -248,6 +327,7 @@ def audit_feature_families_v54(frame: pd.DataFrame, config: V54AuditConfig | Non
         "rows_input": int(len(frame)),
         "rows_panel": int(len(panel)),
         "families": families,
+        "feature_health_diagnostic": global_health,
         "variants": results,
         "family_value": family_value,
         "paper_execution": False,
