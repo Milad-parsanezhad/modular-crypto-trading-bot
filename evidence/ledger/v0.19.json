@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.19",
+  "maturity_tier": "SOURCE_DERIVED_MULTITIMEFRAME_TOURNAMENT",
+  "evidence_class": "VERIFIED_CANONICAL",
+  "evaluation_basis": "Assessed as the first frozen 30-candidate source-derived tournament, using its own pre-registered chronological, cost, sample, breadth and drawdown gates.",
+  "original_objective": "Translate supplied ICT/TTrades/M1Trades material and causal Ichimoku concepts into explicit multi-timeframe rules and select at most one forward-PAPER research candidate.",
+  "scope": {"date": "2026-09-10", "candidates": 30, "timeframes": ["1m", "5m", "15m", "1h", "4h", "1d"], "assets_requested": 12, "split": "60/20/20 chronological"},
+  "engineering_result": {"status": "PASS_FOR_STAGE", "summary": "The educational sources were converted into a frozen causal registry and executed under one next-open cost/risk contract with immutable result files."},
+  "scientific_result": {"status": "NO_STRATEGY_PROMOTED", "summary": "No candidate satisfied all frozen pre-test requirements simultaneously; attractive isolated final-test results could not override failed validation and sample gates."},
+  "economic_result": {"status": "NO_PROMOTABLE_ALPHA", "summary": "Five candidates had positive validation expectancy, but none cleared the complete eligibility contract. H4 candidates later failed untouched test behavior; two positive daily test results were ineligible."},
+  "provenance": {"run_id": 34462995517, "source_commit": null, "artifact_id": 10146553844, "artifact_name": "v19-multitimeframe-tournament", "artifact_digest": "sha256:ddc91a305f358243aec9da0d5762324e37e712d5d9223edf0203602a78904f5f", "strength": "WORKFLOW_AND_HASHED_ARTIFACT; SOURCE_COMMIT_NOT_RECORDED_IN_LOCAL_REPORT"},
+  "safety": {"paper_execution": false, "live_execution": false, "real_money_orders": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["CoinEx spot OHLCV proxy", "Thirty-candidate multiple-testing burden remained", "No forward PAPER authorization", "Consumed final tests cannot be reused for tuning"],
+  "contribution_to_next_version": "Established a machine-readable strategy registry and exposed the need for broader sources, explicit multiplicity control and external-venue replication in v0.20.",
+  "classifications": ["ENGINEERING_PASS", "SCIENTIFIC_METHOD_PASS", "HYPOTHESIS_REJECTED", "DIAGNOSTIC_SUCCESS", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/V19_SOURCE_DERIVED_MULTITIMEFRAME_PROTOCOL.md", "docs/V19_MULTITIMEFRAME_TOURNAMENT_RESULTS_2026-09-10.md"]
+}
