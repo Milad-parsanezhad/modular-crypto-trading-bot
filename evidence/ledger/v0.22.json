@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.22",
+  "maturity_tier": "CAUSAL_MULTIMODAL_REPRESENTATION_LAB",
+  "evidence_class": "VERIFIED_REPOSITORY_RECORD",
+  "evaluation_basis": "Assessed primarily as a representation-integrity experiment, exactly as documented; renderer/model smoke success is not a strategy-promotion result.",
+  "original_objective": "Build deterministic causal ICT visual tensors and establish unsupervised, temporal and vision representation arms before multimodal ablation and any RL experiment.",
+  "scope": {"vision_smoke_assets": ["BTC/USDT", "ETH/USDT", "SOL/USDT"], "timeframe": "4h", "lookback": 64, "vision_models": ["small_cnn", "small_vit"]},
+  "engineering_result": {"status": "IMPLEMENTED_FOR_STAGE", "summary": "The repository contains causal rendering, no-future/model-shape tests, public-data vision smoke workflow, temporal runner and unsupervised representation runner."},
+  "scientific_result": {"status": "REPRESENTATION_PROTOCOL_ESTABLISHED", "summary": "The design excludes ticker, time, axes, text, watermark, color conventions and future-shifted Ichimoku display, and requires downstream ablation before retaining a representation."},
+  "economic_result": {"status": "NOT_A_PROMOTION_TEST", "summary": "No verified evidence in the reviewed record establishes incremental post-cost out-of-sample trading value from vision, temporal or unsupervised embeddings."},
+  "provenance": {"run_id": null, "source_commit": null, "artifact_id": null, "artifact_name": "v22-ict-vision-smoke", "artifact_digest": null, "strength": "SOURCE_CODE_PROTOCOL_WORKFLOW_AND_TESTS; CANONICAL RESULT IDENTIFIERS NOT_RECORDED"},
+  "safety": {"paper_execution": false, "live_execution": false, "real_money_orders": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["Smoke benchmark used only three assets and two epochs", "Representation quality does not prove tradable alpha", "Minimum five-seed promotion requirement was separate from smoke execution", "Multimodal ablation remained required before RL"],
+  "contribution_to_next_version": "Raised the integrity standard for causal representations and led to forensic correction of event ordering and portfolio risk state in v0.23.",
+  "classifications": ["ENGINEERING_PASS", "SCIENTIFIC_METHOD_PASS", "INSUFFICIENT_EVIDENCE", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/V22_ICT_VISION_IMPLEMENTATION.md", "docs/V22_V23_DEEP_MULTIMODAL_RL_RESEARCH_PROTOCOL.md", ".github/workflows/v22-ict-vision.yml"]
+}
