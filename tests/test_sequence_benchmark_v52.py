@@ -12,6 +12,7 @@ from research_bot.sequence_benchmark_v52 import (
     summarize_seed_runs_v52,
 )
 from research_bot.deep_models_v52 import DeepModelConfigV52
+from research_bot.training_v52 import make_sequences_v52
 
 
 def _frame(n=200):
@@ -44,11 +45,14 @@ def test_costs_charge_position_changes_and_stress_is_worse():
     assert stress.sum() < base.sum()
 
 
-def test_performance_reports_drawdown_and_cvar():
+def test_performance_reports_drawdown_cvar_and_finite_pf():
     m = performance_metrics_v52([0.01, -0.02, 0.005, -0.01, 0.02])
     assert m.max_drawdown < 0
     assert m.cvar_95 > 0
     assert np.isfinite(m.annualized_sharpe)
+    assert np.isfinite(m.profit_factor)
+    only_gains = performance_metrics_v52([0.01, 0.02, 0.005])
+    assert np.isfinite(only_gains.profit_factor)
 
 
 def test_end_to_end_score_evaluation_has_base_and_stress():
@@ -70,3 +74,12 @@ def test_seed_summary_rejects_duplicate_seed():
 def test_deep_config_rejects_invalid_transformer_shape():
     with pytest.raises(ValueError, match="divisible"):
         DeepModelConfigV52(input_dim=10, d_model=62, nhead=4)
+
+
+def test_sequence_windows_use_only_prior_rows_for_each_target():
+    x = np.arange(30, dtype=np.float32).reshape(10, 3)
+    y = np.arange(10, dtype=np.float32)
+    windows, labels = make_sequences_v52(x, y, sequence_length=4)
+    assert windows.shape == (6, 4, 3)
+    assert labels.tolist() == [4, 5, 6, 7, 8, 9]
+    assert windows[0, -1, 0] == x[3, 0]
