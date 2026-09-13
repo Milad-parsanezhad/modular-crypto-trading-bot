@@ -26,9 +26,13 @@ ml = [
   "catboost>=1.2,<2",
 ]
 deep = [
-  "torch>=2.6,<3",
+  "torch>=2.14,<2.15",
   "torchvision>=0.21,<1",
   "pillow>=10,<13",
+]
+mamba = [
+  "torch>=2.14,<2.15",
+  "mamba-ssm==2.3.2.post1",
 ]
 rl = [
   "gymnasium>=1.0,<2",
