@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.23",
+  "maturity_tier": "EVENT_DRIVEN_CAUSAL_RISK_REPLAY",
+  "evidence_class": "VERIFIED_REPOSITORY_RECORD",
+  "evaluation_basis": "Assessed as a forensic accounting correction: same-bar exit settlements must not release capital before that bar's entry decision. Correctness evidence and alpha evidence are separated.",
+  "original_objective": "Repair non-causal overlap/risk-state accounting and replay the exact frozen v0.20 trade-attempt ledger without regenerating signals or changing costs and gates.",
+  "scope": {"frozen_input_run": 34469292583, "frozen_input_artifact": "v20-global-strategy-risk-lab", "selection_scope": "fixed-winner forensic replay plus full corrected tournament"},
+  "engineering_result": {"status": "CAUSALITY_FIX_IMPLEMENTED", "summary": "Entry decisions and exit settlements were separated, regression tests were added, and fixed-winner plus full-tournament runners consume the frozen artifact."},
+  "scientific_result": {"status": "FORENSIC_REEVALUATION_REQUIRED", "summary": "The version correctly treats a one-strategy replay as diagnostic only and requires a full corrected tournament before any promotion inference."},
+  "economic_result": {"status": "NO_VERIFIED_PROMOTION_RECORDED_HERE", "summary": "No canonical v0.23 result identifiers or immutable decision artifact were present in the reviewed repository record, so no economic promotion claim is entered."},
+  "provenance": {"run_id": null, "source_commit": null, "artifact_id": null, "artifact_name": "v23-full-causal-tournament", "artifact_digest": null, "strength": "SOURCE_CODE_WORKFLOWS_AND_TESTS; CANONICAL RESULT IDENTIFIERS NOT_RECORDED"},
+  "safety": {"paper_execution": false, "live_execution": false, "real_money_orders": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["Frozen v0.20 data remain historical and already observed", "Forensic replay cannot authorize promotion", "Canonical v0.23 run/artifact identifiers absent from reviewed record"],
+  "contribution_to_next_version": "Made portfolio-level concurrency and exposure measurable, enabling the v0.24 exposure audit and v0.25 allocator comparison.",
+  "classifications": ["ENGINEERING_PASS", "SCIENTIFIC_METHOD_PASS", "DIAGNOSTIC_SUCCESS", "INSUFFICIENT_EVIDENCE", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["research_bot/risk_causality_v23.py", "research_bot/causal_evaluation_v23.py", ".github/workflows/v23-causal-risk-integrity.yml", ".github/workflows/v23-causal-frozen-replay.yml", ".github/workflows/v23-full-causal-tournament.yml"]
+}
