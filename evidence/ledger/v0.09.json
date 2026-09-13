@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.9",
+  "maturity_tier": "DYNAMIC_UNIVERSE_PILOT",
+  "evidence_class": "RETROSPECTIVE_RECONSTRUCTION",
+  "evaluation_basis": "Assessed only from the defect lineage preserved by v0.10; no standalone v0.9 outcome is invented.",
+  "original_objective": "Pilot dynamic-universe history acquisition and eligibility before the multi-asset OOS tournament.",
+  "scope": {"mode": "public-market discovery and paginated OHLCV acquisition", "standalone_result_available": false},
+  "engineering_result": {"status": "DEFECT_DISCOVERED_AND_LATER_CORRECTED", "summary": "Exchange-specific short OHLCV pages could be misclassified as insufficient history even while timestamps advanced; v0.10 records the pagination correction."},
+  "scientific_result": {"status": "INSUFFICIENT_STANDALONE_EVIDENCE", "summary": "No independent v0.9 scientific conclusion can be verified from the current evidence set."},
+  "economic_result": {"status": "NOT_VERIFIED", "summary": "No standalone v0.9 economic result is used."},
+  "provenance": {"run_id": null, "source_commit": null, "artifact_id": null, "strength": "SUCCESSOR_DEFECT_LINEAGE_ONLY"},
+  "safety": {"paper_execution": false, "live_execution": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["No standalone result document", "No run/commit/artifact identifiers", "Pagination defect affected eligibility conclusions"],
+  "contribution_to_next_version": "The corrected pagination logic enabled v0.10 to distinguish genuinely insufficient history from exchange page-size limits.",
+  "classifications": ["ENGINEERING_PARTIAL", "INSUFFICIENT_EVIDENCE", "HISTORICAL_PROTOTYPE", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/V10_OOS_TOURNAMENT_RESULTS_2026-09-08.md"]
+}
