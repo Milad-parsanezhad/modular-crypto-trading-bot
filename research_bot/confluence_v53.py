@@ -32,36 +32,46 @@ class ConfluenceDecisionV53:
         return asdict(self)
 
 
-def _truth(value) -> bool:
-    if value is None or (isinstance(value, float) and not math.isfinite(value)):
-        return False
+def _number(value) -> float | None:
     try:
-        return float(value) >= 0.5
+        x = float(value)
     except (TypeError, ValueError):
-        return bool(value)
+        return None
+    return x if math.isfinite(x) else None
+
+
+def _truth(value) -> bool:
+    x = _number(value)
+    return bool(x is not None and x >= 0.5)
+
+
+def _false_flag(value) -> bool:
+    """Explicit finite false flag; missing data is never bearish evidence."""
+    x = _number(value)
+    return bool(x is not None and x < 0.5)
 
 
 def _positive(value) -> bool:
-    try:
-        return math.isfinite(float(value)) and float(value) > 0
-    except (TypeError, ValueError):
-        return False
+    x = _number(value)
+    return bool(x is not None and x > 0)
 
 
 def _negative(value) -> bool:
-    try:
-        return math.isfinite(float(value)) and float(value) < 0
-    except (TypeError, ValueError):
-        return False
+    x = _number(value)
+    return bool(x is not None and x < 0)
+
+
+def _quality_at_least(value, threshold: float = 0.5) -> bool:
+    x = _number(value)
+    return bool(x is not None and x >= threshold)
 
 
 def decide_confluence_v53(row: pd.Series | dict, config: ConfluenceConfigV53 | None = None) -> ConfluenceDecisionV53:
     """Transparent research-only confluence decision.
 
     Four independent families vote: local ICT/SMC, local Brooks, local Ichimoku,
-    and higher-timeframe agreement. The score is the fraction of positive
-    checks inside each family, then averaged equally across families. There are
-    no fitted weights and no execution authorization.
+    and higher-timeframe agreement. Missing values produce no vote. Scores are
+    not fitted and the result never authorizes execution.
     """
 
     cfg = config or ConfluenceConfigV53()
@@ -76,7 +86,7 @@ def decide_confluence_v53(row: pd.Series | dict, config: ConfluenceConfigV53 | N
         "BROOKS": [
             _positive(r.get("brooks_always_in")),
             _positive(r.get("brooks_market_trend")),
-            float(r.get("brooks_bull_signal_quality", 0.0) or 0.0) >= 0.5,
+            _quality_at_least(r.get("brooks_bull_signal_quality")),
         ],
         "ICHIMOKU": [
             _truth(r.get("ichi_tk_bullish")),
@@ -98,17 +108,17 @@ def decide_confluence_v53(row: pd.Series | dict, config: ConfluenceConfigV53 | N
         "BROOKS": [
             _negative(r.get("brooks_always_in")),
             _negative(r.get("brooks_market_trend")),
-            float(r.get("brooks_bear_signal_quality", 0.0) or 0.0) >= 0.5,
+            _quality_at_least(r.get("brooks_bear_signal_quality")),
         ],
         "ICHIMOKU": [
-            not _truth(r.get("ichi_tk_bullish")),
+            _false_flag(r.get("ichi_tk_bullish")),
             _truth(r.get("ichi_price_below_visible_cloud")),
-            not _truth(r.get("ichi_projected_cloud_bullish")),
+            _false_flag(r.get("ichi_projected_cloud_bullish")),
         ],
         "HTF": [
             _negative(r.get("4h_smc_structure_state")),
             _negative(r.get("4h_brooks_always_in")),
-            r.get("4h_ichi_projected_cloud_bullish") is not None and not _truth(r.get("4h_ichi_projected_cloud_bullish")),
+            _false_flag(r.get("4h_ichi_projected_cloud_bullish")),
         ],
     }
 
