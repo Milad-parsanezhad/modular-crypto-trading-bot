@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from hashlib import sha256
-from typing import Mapping
 
 import numpy as np
 import pandas as pd
@@ -22,9 +21,9 @@ FAMILY_PREFIXES: dict[str, tuple[str, ...]] = {
 }
 
 EXCLUDED_COLUMNS = {
-    "timestamp", "bar_open_at", "bar_close_at", "available_at", "4h_available_at",
-    "asset", "symbol", "timeframe", "open", "high", "low", "close", "volume",
-    "future_return", "target_up",
+    "timestamp", "decision_at", "bar_open_at", "bar_close_at", "available_at",
+    "1h_available_at", "4h_available_at", "asset", "symbol", "timeframe",
+    "open", "high", "low", "close", "volume", "future_return", "target_up",
 }
 
 
@@ -39,6 +38,7 @@ class V54AuditConfig:
     round_trip_cost_bps: tuple[float, ...] = (0.0, 24.0, 36.0)
     min_features_per_family: int = 2
     timeframe: str = "1h"
+    decision_time_col: str = "decision_at"
 
     def __post_init__(self) -> None:
         if self.horizon_bars <= 0 or self.min_train_rows < 100 or self.test_rows < 30 or self.step_rows <= 0:
@@ -49,6 +49,8 @@ class V54AuditConfig:
             raise ValueError("ridge_alpha must be positive")
         if not self.round_trip_cost_bps or min(self.round_trip_cost_bps) < 0:
             raise ValueError("cost grid must be non-negative")
+        if not self.decision_time_col:
+            raise ValueError("decision_time_col required")
 
 
 def stable_audit_fingerprint(frame: pd.DataFrame) -> str:
@@ -72,7 +74,7 @@ def _ridge(alpha: float) -> Pipeline:
 def _numeric_feature_columns(frame: pd.DataFrame) -> list[str]:
     cols: list[str] = []
     for c in frame.columns:
-        if c in EXCLUDED_COLUMNS:
+        if c in EXCLUDED_COLUMNS or c.endswith("_available_at"):
             continue
         if pd.api.types.is_numeric_dtype(frame[c]):
             cols.append(c)
@@ -98,20 +100,20 @@ def feature_families_v54(frame: pd.DataFrame, *, min_features: int = 2) -> dict[
 
 def _prepare_panel(frame: pd.DataFrame, cfg: V54AuditConfig) -> pd.DataFrame:
     x = frame.copy()
-    if "timestamp" not in x or "close" not in x:
-        raise ValueError("timestamp and close are required")
+    if "timestamp" not in x or "close" not in x or cfg.decision_time_col not in x:
+        raise ValueError("timestamp, close and decision_at are required")
     x["timestamp"] = pd.to_datetime(x["timestamp"], utc=True, errors="raise")
-    x = x.sort_values("timestamp", kind="mergesort").reset_index(drop=True)
-    if x["timestamp"].duplicated().any():
-        raise ValueError("duplicate timestamps forbidden in v0.54")
-    if "available_at" in x:
-        avail = pd.to_datetime(x["available_at"], utc=True, errors="coerce")
-        bad = avail.notna() & (avail > x["timestamp"])
-        if bad.any():
-            raise ValueError("future availability leakage in decision frame")
-    for c in [c for c in x.columns if c.endswith("_available_at")]:
+    x[cfg.decision_time_col] = pd.to_datetime(x[cfg.decision_time_col], utc=True, errors="raise")
+    x = x.sort_values(cfg.decision_time_col, kind="mergesort").reset_index(drop=True)
+    if x[cfg.decision_time_col].duplicated().any():
+        raise ValueError("duplicate decision timestamps forbidden in v0.54")
+    if "bar_close_at" in x:
+        close_at = pd.to_datetime(x["bar_close_at"], utc=True, errors="raise")
+        if (x[cfg.decision_time_col] < close_at).any():
+            raise ValueError("decision precedes decision-bar close")
+    for c in [c for c in x.columns if c == "available_at" or c.endswith("_available_at")]:
         avail = pd.to_datetime(x[c], utc=True, errors="coerce")
-        bad = avail.notna() & (avail > x["timestamp"])
+        bad = avail.notna() & (avail > x[cfg.decision_time_col])
         if bad.any():
             raise ValueError(f"future availability leakage in {c}")
     x["future_return"] = x["close"].shift(-cfg.horizon_bars) / x["close"] - 1.0
@@ -133,7 +135,7 @@ def expanding_folds_v54(n: int, cfg: V54AuditConfig) -> list[tuple[slice, slice]
     return folds
 
 
-def _backtest_predictions(test: pd.DataFrame, pred: np.ndarray, cost_bps: float) -> pd.DataFrame:
+def _backtest_predictions(test: pd.DataFrame, pred: np.ndarray, cost_bps: float, *, decision_time_col: str) -> pd.DataFrame:
     if len(test) != len(pred):
         raise ValueError("prediction length mismatch")
     position = np.sign(np.asarray(pred, dtype=float))
@@ -143,7 +145,7 @@ def _backtest_predictions(test: pd.DataFrame, pred: np.ndarray, cost_bps: float)
     gross = position * test["future_return"].to_numpy(dtype=float)
     net = gross - turnover * one_way
     return pd.DataFrame({
-        "timestamp": test["timestamp"].to_numpy(),
+        "decision_at": test[decision_time_col].to_numpy(),
         "position": position,
         "turnover": turnover,
         "gross_return": gross,
@@ -174,6 +176,8 @@ def _run_variant(panel: pd.DataFrame, features: list[str], cfg: V54AuditConfig) 
         test = panel.iloc[te_slice].copy()
         if train.empty or test.empty:
             continue
+        if train.index.max() >= test.index.min() - cfg.purge_bars:
+            raise AssertionError("purge invariant violated")
         model = _ridge(cfg.ridge_alpha)
         model.fit(train[features], train["future_return"].astype(float))
         pred = np.asarray(model.predict(test[features]), dtype=float)
@@ -181,15 +185,15 @@ def _run_variant(panel: pd.DataFrame, features: list[str], cfg: V54AuditConfig) 
             raise ValueError("non-finite predictions")
         fold_row = {
             "fold": fold_id,
-            "train_start": pd.Timestamp(train["timestamp"].iloc[0]).isoformat(),
-            "train_end": pd.Timestamp(train["timestamp"].iloc[-1]).isoformat(),
-            "test_start": pd.Timestamp(test["timestamp"].iloc[0]).isoformat(),
-            "test_end": pd.Timestamp(test["timestamp"].iloc[-1]).isoformat(),
+            "train_start": pd.Timestamp(train[cfg.decision_time_col].iloc[0]).isoformat(),
+            "train_end": pd.Timestamp(train[cfg.decision_time_col].iloc[-1]).isoformat(),
+            "test_start": pd.Timestamp(test[cfg.decision_time_col].iloc[0]).isoformat(),
+            "test_end": pd.Timestamp(test[cfg.decision_time_col].iloc[-1]).isoformat(),
             "train_rows": int(len(train)),
             "test_rows": int(len(test)),
         }
         for cost in cfg.round_trip_cost_bps:
-            bt = _backtest_predictions(test, pred, cost)
+            bt = _backtest_predictions(test, pred, cost, decision_time_col=cfg.decision_time_col)
             combined[cost].append(bt)
             fold_row[f"cost_{cost:g}"] = _metrics(bt, cfg.timeframe)
         fold_rows.append(fold_row)
@@ -197,9 +201,17 @@ def _run_variant(panel: pd.DataFrame, features: list[str], cfg: V54AuditConfig) 
     for cost, parts in combined.items():
         if not parts:
             continue
-        z = pd.concat(parts, ignore_index=True).sort_values("timestamp").reset_index(drop=True)
+        z = pd.concat(parts, ignore_index=True).sort_values("decision_at").reset_index(drop=True)
         aggregate[f"cost_{cost:g}"] = _metrics(z, cfg.timeframe)
     return {"features": features, "folds": fold_rows, "aggregate": aggregate}
+
+
+def _finite_metric(value) -> float:
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return value if np.isfinite(value) else 0.0
 
 
 def audit_feature_families_v54(frame: pd.DataFrame, config: V54AuditConfig | None = None) -> dict:
@@ -214,14 +226,14 @@ def audit_feature_families_v54(frame: pd.DataFrame, config: V54AuditConfig | Non
     }
     results = {name: _run_variant(panel, cols, cfg) for name, cols in variants.items() if cols}
 
-    base_key = f"cost_{24:g}" if 24.0 in cfg.round_trip_cost_bps else f"cost_{cfg.round_trip_cost_bps[0]:g}"
-    all_sharpe = float(results["ALL"]["aggregate"].get(base_key, {}).get("sharpe", 0.0) or 0.0)
+    base_key = "cost_24" if 24.0 in cfg.round_trip_cost_bps else f"cost_{cfg.round_trip_cost_bps[0]:g}"
+    all_sharpe = _finite_metric(results["ALL"]["aggregate"].get(base_key, {}).get("sharpe"))
     family_value: dict[str, dict] = {}
     for name in families:
         drop = results.get(f"DROP_{name}", {}).get("aggregate", {}).get(base_key, {})
         only = results.get(f"ONLY_{name}", {}).get("aggregate", {}).get(base_key, {})
-        drop_sharpe = float(drop.get("sharpe", 0.0) or 0.0)
-        only_sharpe = float(only.get("sharpe", 0.0) or 0.0)
+        drop_sharpe = _finite_metric(drop.get("sharpe"))
+        only_sharpe = _finite_metric(only.get("sharpe"))
         family_value[name] = {
             "all_minus_drop_sharpe": all_sharpe - drop_sharpe,
             "only_family_sharpe": only_sharpe,
