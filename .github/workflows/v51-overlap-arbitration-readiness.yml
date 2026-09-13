@@ -3,23 +3,39 @@ name: v0.51 Prospective Arbitration Readiness
 on:
   push:
     branches:
-      - research/v51-overlap-arbitration-empirical
+      - research/v51-predictor-bundle-freeze-valid
     paths:
       - "research_bot/overlap_arbitration_v51.py"
+      - "research_bot/v51_integrity.py"
+      - "research_bot/predictor_identity_v51.py"
       - "scripts/collect_v51_prospective_ohlcv.py"
+      - "scripts/freeze_v51_predictor_bundle.py"
       - "tests/test_overlap_arbitration_v51.py"
       - "tests/test_v51_prospective_collector.py"
+      - "tests/test_v51_identity_freeze.py"
       - "docs/V51_OVERLAP_CONFLICT_ARBITRATION_PREREGISTRATION.md"
+      - "docs/V51_PREDICTOR_IDENTITY_AMENDMENT_2026-09-13.md"
       - "docs/V51_OVERLAP_ARBITRATION_RESEARCH_2026-09-13.md"
+      - ".github/workflows/v51-overlap-arbitration-readiness.yml"
+  pull_request:
+    paths:
+      - "research_bot/v51_integrity.py"
+      - "research_bot/predictor_identity_v51.py"
+      - "scripts/collect_v51_prospective_ohlcv.py"
+      - "scripts/freeze_v51_predictor_bundle.py"
+      - "tests/test_v51_prospective_collector.py"
+      - "tests/test_v51_identity_freeze.py"
+      - "docs/V51_PREDICTOR_IDENTITY_AMENDMENT_2026-09-13.md"
       - ".github/workflows/v51-overlap-arbitration-readiness.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: v51-readiness-${{ github.ref }}
-  cancel-in-progress: false
+  group: v51-readiness-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   V51_PREREG_HEAD: d8ee4576aaf55750dd5910cc0d3b2efcbba3f5b2
@@ -28,34 +44,37 @@ env:
   V47_SCIENTIFIC_HEAD: 802b0cde38549617589b6a4a313949361dd9425c
   V51_PREREG_EPOCH: "1789274968"
   V51_CALENDAR_EPOCH: "1789275171"
+  SOURCE_V44_RUN: "34700944062"
+  SOURCE_V47_RUN: "34705324352"
 
 jobs:
   readiness:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout exact commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Verify prospective lineage and frozen design
+      - name: Verify original preregistration remains immutable
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          git merge-base --is-ancestor "$V50_RESULT_HEAD" HEAD
-          git merge-base --is-ancestor "$V51_PREREG_HEAD" HEAD
-          git merge-base --is-ancestor "$V51_CALENDAR_HEAD" HEAD
-          # Compare immutable instants numerically, independent of ISO timezone formatting.
+          test "$(git rev-parse HEAD)" = '${{ github.event.pull_request.head.sha || github.sha }}'
+          git cat-file -e "$V50_RESULT_HEAD^{commit}"
+          git cat-file -e "$V51_PREREG_HEAD^{commit}"
+          git cat-file -e "$V51_CALENDAR_HEAD^{commit}"
           test "$(git show -s --format=%ct "$V51_PREREG_HEAD")" = "$V51_PREREG_EPOCH"
           test "$(git show -s --format=%ct "$V51_CALENDAR_HEAD")" = "$V51_CALENDAR_EPOCH"
-          # No post-freeze edit to the frozen policy/calendar files is permitted.
-          git diff --exit-code "$V51_CALENDAR_HEAD" -- \
+          git diff --exit-code "$V51_CALENDAR_HEAD" HEAD -- \
             docs/V51_OVERLAP_CONFLICT_ARBITRATION_PREREGISTRATION.md \
             research_bot/overlap_arbitration_v51.py \
             tests/test_overlap_arbitration_v51.py
+          grep -q '2026-09-13T12:00:00Z' docs/V51_PREDICTOR_IDENTITY_AMENDMENT_2026-09-13.md
+          grep -q 'V47_C1_LATEST_CANONICAL_FOLD_PER_ASSET' docs/V51_PREDICTOR_IDENTITY_AMENDMENT_2026-09-13.md
+          test ! -e docs/V51_RESULTS_2026-09-13.md
 
       - name: Verify inherited v0.47 scientific pipeline unchanged
         shell: bash
@@ -82,16 +101,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
           python - <<'PY'
-          import sys, ccxt, pandas, sklearn
+          import sys, ccxt, joblib, pandas, sklearn
           assert sys.version_info[:2] == (3, 11)
-          print({"python": sys.version.split()[0], "ccxt": ccxt.__version__, "pandas": pandas.__version__, "sklearn": sklearn.__version__})
+          print({"python": sys.version.split()[0], "ccxt": ccxt.__version__, "joblib": joblib.__version__, "pandas": pandas.__version__, "sklearn": sklearn.__version__})
           PY
 
-      - name: Run frozen v0.51 causal arbitration tests
-        run: pytest -q tests/test_overlap_arbitration_v51.py
-
-      - name: Run prospective collector invariants
-        run: pytest -q tests/test_v51_prospective_collector.py
+      - name: Run frozen arbitration and amended integrity tests
+        run: |
+          pytest -q \
+            tests/test_overlap_arbitration_v51.py \
+            tests/test_v51_prospective_collector.py \
+            tests/test_v51_identity_freeze.py
 
       - name: Run inherited regression suite
         run: |
@@ -100,14 +120,12 @@ jobs:
             tests/test_probability_calibration_v47.py \
             tests/test_economic_state_v46.py
 
-      - name: Verify research-only safety contract
+      - name: Verify research-only safety and amended calendar
         run: |
           python - <<'PY'
-          from research_bot.overlap_arbitration_v51 import (
-              ALLOWED_VENUES_V51,
-              PROSPECTIVE_START_V51,
-              ARBITRATION_POLICY_V51,
-          )
+          import pandas as pd
+          from research_bot.overlap_arbitration_v51 import ALLOWED_VENUES_V51, ARBITRATION_POLICY_V51
+          from research_bot.v51_integrity import AMENDED_PROSPECTIVE_START_V51
           from scripts.collect_v51_prospective_ohlcv import (
               ALLOWED_VENUES_V51 as COLLECTOR_VENUES,
               PROSPECTIVE_START_V51 as COLLECTOR_START,
@@ -116,12 +134,55 @@ jobs:
           assert set(ALLOWED_VENUES_V51) == {"coinex", "okx", "kucoin"}
           assert tuple(COLLECTOR_VENUES) == ("coinex", "okx", "kucoin")
           assert "kraken" not in ALLOWED_VENUES_V51
-          assert PROSPECTIVE_START_V51 == COLLECTOR_START
-          print({
-              "policy": ARBITRATION_POLICY_V51,
-              "prospective_start": str(PROSPECTIVE_START_V51),
-              "kraken_touched": False,
-              "paper_execution": False,
-              "live_execution": False,
-          })
+          assert AMENDED_PROSPECTIVE_START_V51 == pd.Timestamp("2026-09-13T12:00:00Z")
+          assert COLLECTOR_START == AMENDED_PROSPECTIVE_START_V51
+          print({"policy": ARBITRATION_POLICY_V51, "prospective_start": str(AMENDED_PROSPECTIVE_START_V51), "kraken_touched": False, "paper_execution": False, "live_execution": False})
           PY
+
+      - name: Download exact canonical v0.44 prepared evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: v44-prepared-data
+          path: work/v44
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_V44_RUN }}
+
+      - name: Download exact canonical v0.47 evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: v47-probability-calibration
+          path: work/v47
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_V47_RUN }}
+
+      - name: Reconstruct and freeze exact production predictor identity
+        run: |
+          python scripts/freeze_v51_predictor_bundle.py \
+            --v44-dir work/v44 \
+            --v47-dir work/v47 \
+            --output-dir results/v51_predictor_identity
+
+      - name: Verify bundle and upload immutable identity artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from research_bot.predictor_identity_v51 import assert_verified_manifest
+          out=Path('results/v51_predictor_identity')
+          m=json.loads((out/'predictor_manifest_v51.json').read_text())
+          assert_verified_manifest(m)
+          assert m['repaired_prospective_start']=='2026-09-13T12:00:00Z'
+          print(json.dumps(m, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload v0.51 predictor identity evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: v51-predictor-identity-bundle
+          path: results/v51_predictor_identity/
+          if-no-files-found: error
+          retention-days: 90
