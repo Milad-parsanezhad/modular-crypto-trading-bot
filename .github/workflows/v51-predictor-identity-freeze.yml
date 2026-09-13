@@ -1,0 +1,187 @@
+name: v0.51 Predictor Identity Freeze
+
+on:
+  push:
+    branches:
+      - research/v51-overlap-arbitration-empirical
+    paths:
+      - "research_bot/overlap_arbitration_v51.py"
+      - "research_bot/predictor_identity_v51.py"
+      - "scripts/freeze_v51_predictor_bundle.py"
+      - "tests/test_overlap_arbitration_v51.py"
+      - "tests/test_v51_predictor_identity_hardening.py"
+      - "docs/V51_PREDICTOR_IDENTITY_AMENDMENT_2026-09-13.md"
+      - ".github/workflows/v51-predictor-identity-freeze.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: v51-identity-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SOURCE_V44_RUN: "34700944062"
+  SOURCE_V47_RUN: "34705324352"
+  CANONICAL_V47_HEAD: "802b0cde38549617589b6a4a313949361dd9425c"
+  ORIGINAL_V51_PREREG: "d8ee4576aaf55750dd5910cc0d3b2efcbba3f5b2"
+  V51_CALENDAR_HEAD: "6a8fa49de2d1befa9c17049aa61e13da20a028eb"
+  V51_IDENTITY_AMENDMENT_HEAD: "4838c0d98c408d358929b0767676a5ac024bd8dd"
+  REPAIRED_PROSPECTIVE_START: "2026-09-13T12:00:00Z"
+
+jobs:
+  freeze-v51-predictor-identity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify canonical prospective lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$ORIGINAL_V51_PREREG" HEAD
+          git merge-base --is-ancestor "$V51_CALENDAR_HEAD" HEAD
+          git merge-base --is-ancestor "$V51_IDENTITY_AMENDMENT_HEAD" HEAD
+          test ! -e docs/V51_RESULTS_2026-09-13.md
+          grep -q 'V47_C1_LATEST_CANONICAL_FOLD_PER_ASSET' docs/V51_PREDICTOR_IDENTITY_AMENDMENT_2026-09-13.md
+          grep -q "$REPAIRED_PROSPECTIVE_START" docs/V51_PREDICTOR_IDENTITY_AMENDMENT_2026-09-13.md
+          python - <<'PY'
+          import subprocess
+          amendment=int(subprocess.check_output(['git','show','-s','--format=%ct','4838c0d98c408d358929b0767676a5ac024bd8dd']).decode().strip())
+          repaired=1789300800
+          assert amendment < repaired, (amendment, repaired)
+          PY
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install project and test runner
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip check
+          python - <<'PY'
+          import sys, joblib, numpy, pandas, scipy, sklearn
+          assert sys.version_info[:2] == (3, 11)
+          print({
+              'python': sys.version.split()[0],
+              'joblib': joblib.__version__,
+              'numpy': numpy.__version__,
+              'pandas': pandas.__version__,
+              'scipy': scipy.__version__,
+              'sklearn': sklearn.__version__,
+          })
+          PY
+
+      - name: Run v0.51 causality and identity-hardening tests
+        run: |
+          pytest -q \
+            tests/test_overlap_arbitration_v51.py \
+            tests/test_v51_predictor_identity_hardening.py
+
+      - name: Download exact canonical v0.44 prepared evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: v44-prepared-data
+          path: work/v44
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_V44_RUN }}
+
+      - name: Download exact canonical v0.47 evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: v47-probability-calibration
+          path: work/v47
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_V47_RUN }}
+
+      - name: Verify source provenance before reconstruction
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          v47=Path('work/v47')
+          p=json.loads((v47/'execution_provenance_v47.json').read_text())
+          assert int(p['workflow_run_id']) == 34705324352
+          assert p['head_sha'] == '802b0cde38549617589b6a4a313949361dd9425c'
+          assert p['kraken_touched'] is False
+          assert p['paper_execution'] is False
+          assert p['live_execution'] is False
+          PY
+
+      - name: Reconstruct and freeze unique fold-5 C1 production bundle
+        run: |
+          python scripts/freeze_v51_predictor_bundle.py \
+            --v44-dir work/v44 \
+            --v47-dir work/v47 \
+            --output-dir results/v51_predictor_identity
+
+      - name: Validate frozen bundle contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from research_bot.predictor_identity_v51 import assert_verified_manifest
+          out=Path('results/v51_predictor_identity')
+          for name in [
+              'v51_production_predictor.joblib',
+              'predictor_manifest_v51.json',
+              'predictor_verification_v51.csv',
+              'output_hashes_v51_identity.json',
+          ]:
+              assert (out/name).is_file(), name
+          m=json.loads((out/'predictor_manifest_v51.json').read_text())
+          assert_verified_manifest(m)
+          assert m['repaired_prospective_start']=='2026-09-13T12:00:00Z'
+          assert m['all_verified'] is True
+          print(json.dumps(m, indent=2, sort_keys=True))
+          PY
+
+      - name: Write execution provenance
+        run: |
+          python - <<'PY'
+          import json, os, platform
+          from pathlib import Path
+          out=Path('results/v51_predictor_identity')
+          payload={
+              'workflow_run_id': int(os.environ['GITHUB_RUN_ID']),
+              'head_sha': os.environ['GITHUB_SHA'],
+              'preregistration_commit': 'd8ee4576aaf55750dd5910cc0d3b2efcbba3f5b2',
+              'calendar_commit': '6a8fa49de2d1befa9c17049aa61e13da20a028eb',
+              'identity_amendment_commit': '4838c0d98c408d358929b0767676a5ac024bd8dd',
+              'source_v44_run': 34700944062,
+              'source_v47_run': 34705324352,
+              'repaired_prospective_start': '2026-09-13T12:00:00Z',
+              'python': platform.python_version(),
+              'kraken_touched': False,
+              'paper_execution': False,
+              'live_execution': False,
+              'economic_decision_emitted': False,
+          }
+          (out/'execution_provenance_v51_identity.json').write_text(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload immutable v0.51 predictor identity bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: v51-predictor-identity-bundle
+          path: results/v51_predictor_identity/
+          if-no-files-found: error
+          retention-days: 90
