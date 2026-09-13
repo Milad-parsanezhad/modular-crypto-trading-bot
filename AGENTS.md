@@ -4,11 +4,11 @@
 > **Project:** MSc AI cryptocurrency trading-bot research  
 > **Primary repository:** `parsa314/modular-crypto-trading-bot`
 
-This file exists specifically to prevent future coding/research agents from entering repository-selection loops, duplicating fixes, or treating the public deployment shell as the scientific codebase.
+This file exists specifically to prevent future coding/research agents from entering repository-selection loops, duplicating fixes, flattening scientific lineage, or treating the public deployment shell as the scientific codebase.
 
 ## 1. Single Source of Truth
 
-`parsa314/modular-crypto-trading-bot` is the **canonical scientific and engineering repository** for this project.
+`parsa314/modular-crypto-trading-bot` is the **canonical scientific and engineering repository** for the MSc trading-bot project.
 
 All substantive development belongs here, including:
 
@@ -24,7 +24,18 @@ All substantive development belongs here, including:
 
 **Do not create a second scientific implementation in another repository unless the owner explicitly asks for it.**
 
-## 2. Relationship to `parsa314/miladchicomobot`
+## 2. Mandatory Current-State Navigation
+
+Before changing scientific code or interpreting project status, read:
+
+1. this file;
+2. `docs/CANONICAL_RESEARCH_STATUS_2026-09-13.md`;
+3. the immutable preregistration/scientific SHAs referenced by that status record;
+4. the active research PR when work is prospective.
+
+Historical `PROJECT_STATUS_*`, results and defense documents are evidence snapshots. They do not automatically override the canonical current-state navigation record.
+
+## 3. Relationship to `parsa314/miladchicomobot`
 
 `parsa314/miladchicomobot` is a **lightweight public deployment / monitoring shell**, not the canonical research codebase.
 
@@ -38,7 +49,7 @@ Therefore:
 - do **not** infer the state of the scientific project from the deployment shell alone;
 - when a runtime dependency is mirrored into `miladchicomobot`, it is only to keep the public shell deployable.
 
-## 3. Current Railway Routing
+## 4. Current Railway Routing
 
 As of 2026-09-13, the Railway service named `thesis-trading-bot-v08` is sourced from:
 
@@ -48,9 +59,9 @@ This is a deployment-routing fact, **not** a statement that `miladchicomobot` is
 
 Before changing Railway source routing, verify the current Railway service configuration and obtain explicit approval for any migration/repointing action.
 
-## 4. Intentional Fail-Closed Behavior
+## 5. Intentional Fail-Closed Behavior
 
-The public deployment shell is intentionally research-only and fail-closed.
+The current deployment is intentionally research-only and fail-closed.
 
 The following state is intentional unless a later scientific gate explicitly changes it:
 
@@ -58,60 +69,77 @@ The following state is intentional unless a later scientific gate explicitly cha
 - `PAPER_EXECUTION = false`
 - forward-paper execution disabled
 - no exchange-order endpoint enabled
+- Kraken holdout sealed
 
-A missing endpoint such as `/paper/observations` in the public shell is **not automatically a bug**. The deployed shell has historically exposed `/paper/status` while keeping execution endpoints locked. Inspect the actual source and scientific gate before attempting to "fix" such behavior.
+A missing or locked execution endpoint is **not automatically a bug**. Inspect the actual source and scientific gate before attempting to change such behavior.
 
 Do not enable live or paper execution merely to make a smoke test pass.
 
-## 5. Dependency Authority
+## 6. Dependency Authority
 
-For the scientific bot, use the dependency declarations in this repository as authoritative. At the time this contract was written, the core runtime includes the project stack around:
+For the scientific bot, use the dependency declarations in this repository as authoritative.
 
-- CCXT
-- NumPy
-- Pandas
-- scikit-learn
-- FastAPI
-- Uvicorn
-- Psycopg
+Core runtime includes the project stack around CCXT, NumPy, Pandas, scikit-learn, FastAPI, Uvicorn and Psycopg. Optional ML/deep/RL stacks are declared as extras and should be installed only when their corresponding research path is being exercised.
 
-Do not add large ML frameworks to a deployment image simply because they may be used in future research. Add PyTorch / Transformers / RL frameworks only when the corresponding code path is actually being integrated and tested.
+Do not add large ML frameworks to a lightweight deployment image merely because they may be used in future research.
 
-## 6. Infrastructure Errors Are Not Automatically Code Errors
+## 7. Keep the Two Crypto Projects Separate
 
-On 2026-09-13, a Railway PostgreSQL instance entered repeated recovery because its storage was exhausted (`No space left on device`). A read-only verification service then failed with PostgreSQL `57P03` (`database system is in recovery mode`).
+The owner also has a separate **Crypto Intelligence Studio / fundamental research platform**. It is not this MSc trading-bot repository.
 
-If similar failures appear, check infrastructure/storage/database health before changing trading or research logic.
+Do not import its database schema, market-coverage requirements, pre-listing engine, whale intelligence pipeline or Railway database incidents into this trading-bot project unless an explicit integration task requires it.
 
-Neon was independently reachable and contained the Crypto Intelligence data model at the time of that investigation, but agents must re-verify current database routing before making migrations or changing `DATABASE_URL`.
+A previously observed Railway PostgreSQL `No space left on device` / `57P03 recovery mode` incident was found while inspecting the broader Railway environment. It must **not** be assumed to be the canonical trading-bot database failure without verifying the exact service and `DATABASE_URL` routing.
 
-## 7. Agent Decision Procedure
+Infrastructure errors must be attributed to the exact service/database before trading or research logic is changed.
+
+## 8. Scientific Branch Lineage Is Intentionally Stacked
+
+The scientific lineage through v0.50/v0.51 is not fully flattened into `main`. `main` and `deploy/research-v50` are materially diverged histories.
+
+This is not permission to perform a mega-merge.
+
+Future agents must distinguish:
+
+- moving branch head;
+- frozen preregistration head;
+- canonical empirical/scientific head;
+- artifact/run provenance;
+- deployment shell head.
+
+Proven engineering hardening may be reconciled selectively into `main` with regression tests. Scientific model/threshold/data-window/holdout changes must remain under the experiment-specific governance path.
+
+## 9. Agent Decision Procedure
 
 When continuing this project:
 
 1. Start in `parsa314/modular-crypto-trading-bot` for scientific/research/trading-bot work.
-2. Read `README.md`, this `AGENTS.md`, the latest project-status document, and the relevant experiment/workflow before editing code.
-3. Verify the latest commit and CI state; do not assume an older chat-reported version is current.
+2. Read `README.md`, this `AGENTS.md`, `docs/CANONICAL_RESEARCH_STATUS_2026-09-13.md`, and the relevant experiment/workflow before editing code.
+3. Verify the latest commit, PR and CI state; do not assume an older chat-reported version is current.
 4. Treat `miladchicomobot` as a deployment shell unless the owner explicitly changes repository governance.
-5. For deployment failures, separate **code**, **dependency**, **database**, **Railway**, and **external-provider** causes before patching.
-6. Preserve `LIVE_EXECUTION=false` unless explicit authorization and the project governance gate both permit otherwise.
+5. Separate code, dependency, database, Railway and external-provider causes before patching.
+6. Preserve `LIVE_EXECUTION=false` and `PAPER_EXECUTION=false` unless explicit authorization and the project governance gate both permit otherwise.
 7. Never rewrite or discard negative experimental evidence merely to obtain a passing result.
 8. Prefer reproducible fixes in the canonical repository over ad-hoc changes made only in a running environment.
+9. Never label infrastructure blockage as a scientific rejection and never substitute an offline smoke test for required prospective evidence.
+10. For v0.51, honor first-seen evidence rules: missed/late bars cannot be backfilled and relabeled as prospective.
 
-## 8. Anti-Loop Rules
+## 10. Anti-Loop Rules
 
 A future agent must **not** repeatedly:
 
 - search for the "real" bot inside `miladchicomobot` after this repository has been identified;
 - recreate dependencies already declared in the canonical project;
 - interpret a fail-closed endpoint as a missing-feature regression without checking governance;
-- blame CoinMarketCap or another provider for a database/storage failure;
+- blame CoinMarketCap or another provider for an unrelated database/storage failure;
 - migrate databases or change Railway source repositories simply to clear an error without first identifying the root cause;
-- duplicate the same research implementation across both repositories.
+- duplicate the same research implementation across both repositories;
+- attempt a blind merge of hundreds of scientific commits to make `main` look current;
+- treat a moving PR head as interchangeable with a frozen scientific SHA.
 
-If repository roles appear inconsistent with this document, **verify current GitHub and Railway state first**, then update this contract as part of the same change.
+If repository roles or scientific state appear inconsistent with this document, **verify current GitHub and Railway state first**, then update this contract and the canonical status record as part of the same change.
 
-## 9. Governance Summary
+## 11. Governance Summary
 
 ```text
 parsa314/modular-crypto-trading-bot
@@ -122,9 +150,13 @@ parsa314/miladchicomobot
     = PUBLIC DEPLOYMENT / MONITORING SHELL
     = intentionally lightweight and fail-closed
 
+Crypto Intelligence Studio
+    = SEPARATE FUNDAMENTAL-RESEARCH PROJECT
+    != this MSc trading-bot codebase
+
 Railway deployment source
     = may point to the shell for operational reasons
     != project source of truth
 ```
 
-**Evidence Before Opinion. Reproduce before promoting. Infrastructure failures must be diagnosed before research logic is changed.**
+**Evidence Before Opinion. Reproduce before promoting. Attribute infrastructure failures before changing scientific logic.**
