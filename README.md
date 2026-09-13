@@ -6,6 +6,8 @@
 > **Execution status:** `LIVE_EXECUTION = false`  
 > **Research status:** promising signals exist, but **no strategy is claimed as guaranteed profitable alpha**.
 
+> **Agent / repository routing:** This repository is the **canonical scientific and engineering source of truth**. `parsa314/miladchicomobot` is a lightweight public deployment/monitoring shell, not the main research codebase. Any coding or research agent must read [`AGENTS.md`](AGENTS.md) before changing repository roles, Railway routing, execution flags, dependencies, or scientific logic.
+
 ## What this project is
 
 This repository is a public research program for building and falsifying an **AI/ML crypto trading system** under realistic market constraints. It covers strategy discovery, causal feature engineering, meta-labeling, LSTM/GRU/TCN/Transformer challengers, candlestick/market-structure vision research, portfolio risk, future reinforcement-learning allocation, and defense-grade reproducibility.
@@ -124,6 +126,7 @@ Predictive models do not directly authorize exchange execution. Portfolio/risk c
 
 ## Repository governance
 
+- [Agent operating contract](AGENTS.md)
 - [Contribution guidelines](CONTRIBUTING.md)
 - [Code of conduct](CODE_OF_CONDUCT.md)
 - [Security policy](SECURITY.md)
