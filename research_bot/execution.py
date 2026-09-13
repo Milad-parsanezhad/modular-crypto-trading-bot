@@ -66,15 +66,21 @@ class ExecutionFill:
 class PaperExecutionEngine:
     """Deterministic paper/testnet-like execution simulator.
 
-    Signal generation and execution remain separate.  This engine models fee,
-    slippage, partial fills and duplicate-order protection.  It intentionally
-    contains no exchange-secret handling and no live-order method.
+    Signal generation and execution remain separate. This engine models fee,
+    slippage, partial fills and process-local duplicate-order protection. The
+    persistent settlement layer remains the source of truth across restarts.
+    It intentionally contains no exchange-secret handling and no live-order
+    method.
     """
 
     def __init__(self, policy: ExecutionPolicy | None = None):
         self.policy = policy or ExecutionPolicy()
         self.policy.assert_safe()
-        if self.policy.mode not in {ExecutionMode.PAPER, ExecutionMode.BACKTEST, ExecutionMode.TESTNET}:
+        if self.policy.mode not in {
+            ExecutionMode.PAPER,
+            ExecutionMode.BACKTEST,
+            ExecutionMode.TESTNET,
+        }:
             raise RuntimeError("PaperExecutionEngine cannot run in LIVE mode")
         self._seen_ids: set[str] = set()
 
@@ -98,7 +104,9 @@ class PaperExecutionEngine:
         filled_quantity = request.quantity * fill_fraction
         total_slippage_bps = max(0.0, self.policy.slippage_bps + extra_slippage_bps)
         direction = 1.0 if request.side is OrderSide.BUY else -1.0
-        fill_price = request.reference_price * (1.0 + direction * total_slippage_bps / 10_000.0)
+        fill_price = request.reference_price * (
+            1.0 + direction * total_slippage_bps / 10_000.0
+        )
         filled_notional = filled_quantity * fill_price
         fee_paid = filled_notional * self.policy.fee_bps / 10_000.0
         slippage_paid = abs(fill_price - request.reference_price) * filled_quantity
@@ -123,3 +131,15 @@ class PaperExecutionEngine:
             status=status,
             timestamp=datetime.now(timezone.utc),
         )
+
+    def release_unsettled(self, client_order_id: str) -> None:
+        """Release only a PAPER/BACKTEST/TESTNET fill that failed persistence.
+
+        This method exists solely so a transient persistence failure does not
+        poison process-local idempotency forever. Callers must invoke it only
+        after the atomic persistence layer confirms that no settlement was
+        committed. Persistent `client_order_id` uniqueness remains authoritative.
+        """
+        if self.policy.mode is ExecutionMode.LIVE:
+            raise RuntimeError("release_unsettled is forbidden in LIVE mode")
+        self._seen_ids.discard(str(client_order_id))
