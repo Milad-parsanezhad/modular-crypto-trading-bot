@@ -5,6 +5,15 @@ on:
     branches: ["v17-thesis-evidence-synthesis"]
   pull_request:
     branches: ["main"]
+    paths:
+      - "research_bot/evidence_ledger_v17.py"
+      - "research_bot/trial_registry_v17.py"
+      - "tests/test_evidence_ledger_v17.py"
+      - "tests/test_trial_registry_v17.py"
+      - "docs/V17_THESIS_EVIDENCE_SYNTHESIS.md"
+      - "docs/V17_SEARCH_AWARE_STATISTICAL_AUDIT.md"
+      - "docs/CHAPTER4_RESULTS_MASTER_DRAFT.md"
+      - ".github/workflows/v17-thesis-evidence-integrity.yml"
   workflow_dispatch:
 
 jobs:
