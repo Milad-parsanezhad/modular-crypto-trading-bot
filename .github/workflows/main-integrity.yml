@@ -1,0 +1,128 @@
+name: main-integrity
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: main-integrity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integrity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up canonical Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install and verify core development environment
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+          python -m pip install 'pyyaml>=6,<7'
+          python -m pip check
+          python - <<'PY'
+          import ccxt, fastapi, numpy, pandas, psycopg, sklearn, uvicorn
+          print('ccxt', ccxt.__version__)
+          print('numpy', numpy.__version__)
+          print('pandas', pandas.__version__)
+          print('sklearn', sklearn.__version__)
+          print('fastapi', fastapi.__version__)
+          print('uvicorn', uvicorn.__version__)
+          print('psycopg', psycopg.__version__)
+          PY
+
+      - name: Compile Python sources
+        run: python -m compileall -q research_bot scripts
+
+      - name: Run repository regression suite
+        env:
+          LIVE_EXECUTION: 'false'
+          PAPER_EXECUTION: 'false'
+          BOT_FORWARD_PAPER_ENABLED: 'false'
+          BOT_PAPER_EXECUTION_ENABLED: 'false'
+        run: pytest -q
+
+      - name: Verify fail-closed execution environment guards
+        run: |
+          set -euo pipefail
+          flags=(LIVE_EXECUTION PAPER_EXECUTION BOT_FORWARD_PAPER_ENABLED BOT_PAPER_EXECUTION_ENABLED)
+          for flag in "${flags[@]}"; do
+            set +e
+            env \
+              LIVE_EXECUTION=false \
+              PAPER_EXECUTION=false \
+              BOT_FORWARD_PAPER_ENABLED=false \
+              BOT_PAPER_EXECUTION_ENABLED=false \
+              "${flag}=true" \
+              python -c 'import research_bot.service' >"/tmp/${flag}.out" 2>"/tmp/${flag}.err"
+            code=$?
+            set -e
+            test "$code" -ne 0
+            grep -q 'Execution firewall violation' "/tmp/${flag}.err"
+          done
+
+      - name: Verify canonical status and dependency contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tomllib
+          from research_bot import service
+
+          readme = Path('README.md').read_text(encoding='utf-8')
+          status = Path('docs/CANONICAL_RESEARCH_STATUS_2026-09-13.md').read_text(encoding='utf-8')
+          agents = Path('AGENTS.md').read_text(encoding='utf-8')
+          cfg = tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))
+
+          assert service.LATEST_COMPLETED_EXPERIMENT == 'v0.50'
+          assert service.LATEST_COMPLETED_DECISION == 'V50_NONOVERLAP_FAILURE_SUPPORTED'
+          assert service.PAPER_EXECUTION is False
+          assert service.LIVE_EXECUTION is False
+          assert 'V50_NONOVERLAP_FAILURE_SUPPORTED' in readme
+          assert 'V50_NONOVERLAP_FAILURE_SUPPORTED' in status
+          assert 'SCIENTIFIC_DECISION_DEFERRED' in status
+          assert 'parsa314/modular-crypto-trading-bot' in agents
+          assert 'parsa314/miladchicomobot' in agents
+          extras = cfg['project']['optional-dependencies']
+          assert {'dev', 'ml', 'deep', 'rl'} <= set(extras)
+          assert Path('.python-version').read_text().strip() == '3.11'
+          print('canonical navigation/dependency contract: PASS')
+          PY
+
+      - name: Parse all GitHub workflow YAML
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+          files = sorted(Path('.github/workflows').glob('*.y*ml'))
+          assert files, 'no workflow files found'
+          for path in files:
+              with path.open('r', encoding='utf-8') as f:
+                  obj = yaml.safe_load(f)
+              assert isinstance(obj, dict), path
+          print(f'workflow YAML parse: PASS ({len(files)} files)')
+          PY
+
+      - name: Static secret-file hygiene check
+        run: |
+          set -euo pipefail
+          ! git ls-files | grep -E '(^|/)\.env($|\.)'
+          ! git grep -n -E 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' -- ':!*.md'
+          echo 'secret-file hygiene: PASS'
