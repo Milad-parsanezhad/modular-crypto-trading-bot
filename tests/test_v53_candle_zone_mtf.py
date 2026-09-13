@@ -116,12 +116,11 @@ def test_ob_invalidation_activates_breaker_only_on_later_bar():
         "ict_bear_ob_upper": [np.nan] * n,
     })
     out = add_zone_lifecycle_v53(x)
-    # Close below bullish OB lower invalidates at bar 5; same bar cannot be breaker retest.
     assert out.loc[5, "ict_bull_ob_invalidation"] == 1
     assert out.loc[5, "ict_bear_breaker_retest"] == 0
 
 
-def test_mtf_join_does_not_expose_4h_features_before_4h_available_at():
+def test_mtf_join_uses_decision_at_and_does_not_expose_4h_early():
     one_h = _ohlcv(140, "1h")
     four_h = resample_closed_ohlcv_v53(one_h, source_timeframe="1h", target_timeframe="4h")
     raw_four_h = four_h[["timestamp", "open", "high", "low", "close", "volume"]].copy()
@@ -129,9 +128,11 @@ def test_mtf_join_does_not_expose_4h_features_before_4h_available_at():
         {"1h": one_h, "4h": raw_four_h},
         decision_timeframe="1h",
     )
-    assert "4h_available_at" in out.columns
+    assert "decision_at" in out.columns
+    assert (out["decision_at"] == out["1h_available_at"]).all()
+    assert (out["decision_at"] >= out["bar_close_at"]).all()
     valid = out["4h_available_at"].notna()
-    assert (out.loc[valid, "4h_available_at"] <= out.loc[valid, "timestamp"]).all()
+    assert (out.loc[valid, "4h_available_at"] <= out.loc[valid, "decision_at"]).all()
 
 
 def test_future_4h_price_change_cannot_change_prior_joined_1h_features():
