@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.8",
+  "maturity_tier": "ADVANCED_RESEARCH_CONTRACT_INTEGRATION",
+  "evidence_class": "VERIFIED_REPOSITORY_RECORD",
+  "evaluation_basis": "Assessed as an architecture and enforcement-contract stage, not as an empirical alpha experiment.",
+  "original_objective": "Translate Evidence Before Opinion, point-in-time availability, cost-aware abstention, independent risk and fail-closed execution into reusable code contracts.",
+  "scope": {"mode": "research branch", "components": ["evidence stamps", "point-in-time joins", "decision engine", "risk engine", "paper simulator", "dynamic universe", "Ichimoku candidate features", "reproducibility manifests"]},
+  "engineering_result": {"status": "DESIGN_AND_IMPLEMENTATION_RECORDED", "summary": "The repository documents enforceable seams for evidence, causality, costs, risk, idempotent paper simulation and live-off defaults."},
+  "scientific_result": {"status": "NOT_AN_ALPHA_TEST", "summary": "No model or strategy was promoted; advanced ML/RL remained challenger-only pending OOS evidence."},
+  "economic_result": {"status": "NOT_TESTED", "summary": "Passing v0.8 engineering gates was explicitly not a profitability claim."},
+  "provenance": {"run_id": null, "source_commit": null, "artifact_id": null, "strength": "VERSIONED_ARCHITECTURE_DOCUMENT"},
+  "safety": {"paper_execution": false, "live_execution": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["No standalone empirical result", "No canonical workflow ID in the stage document", "Paper simulator capability did not authorize paper execution", "External data families still required availability audits"],
+  "contribution_to_next_version": "Created the common safety/evidence substrate used by later universe discovery and OOS tournaments.",
+  "classifications": ["ENGINEERING_PASS", "DIAGNOSTIC_SUCCESS", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/V08_ADVANCED_RESEARCH_INTEGRATION.md"]
+}
