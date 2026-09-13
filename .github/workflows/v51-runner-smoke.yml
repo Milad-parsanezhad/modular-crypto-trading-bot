@@ -1,0 +1,22 @@
+name: v0.51 Runner Smoke
+
+on:
+  push:
+    branches:
+      - research/v51-overlap-arbitration-empirical
+    paths:
+      - ".github/workflows/v51-runner-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Runner assigned
+        run: |
+          echo "runner-ok"
+          uname -a
