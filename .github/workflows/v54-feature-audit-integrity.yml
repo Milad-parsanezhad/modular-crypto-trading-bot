@@ -6,6 +6,7 @@ on:
       - 'research_bot/feature_audit_v54.py'
       - 'research_bot/v54_integrity.py'
       - 'research_bot/v54_promotion.py'
+      - 'research_bot/v54_completion.py'
       - 'research_bot/multitimeframe_v53.py'
       - 'scripts/run_v54_feature_audit.py'
       - 'tests/test_feature_audit_v54.py'
@@ -36,7 +37,7 @@ jobs:
       - name: Compile v0.54 modules
         run: |
           python -m compileall -q research_bot scripts tests
-      - name: Focused causal, audit and reproducibility tests
+      - name: Focused causal, audit, reproducibility and completion tests
         run: |
           pytest -q \
             tests/test_v53_candle_zone_mtf.py \
@@ -52,6 +53,7 @@ jobs:
             research_bot/feature_audit_v54.py \
             research_bot/v54_integrity.py \
             research_bot/v54_promotion.py \
+            research_bot/v54_completion.py \
             scripts/run_v54_feature_audit.py \
             docs/V54_FEATURE_AUDIT_PROTOCOL.md
           python - <<'PY'
@@ -63,9 +65,13 @@ jobs:
           assert 'PaperExecutionEngine' not in runner
           assert '--freeze-dir' in runner
           assert '--replay-dir' in runner
+          assert 'assess_v54_completion' in runner
           audit = Path('research_bot/feature_audit_v54.py').read_text()
           assert 'moving_block_mean_ci_v54' in audit
           assert 'turnover[-1] +=' in audit
+          completion = Path('research_bot/v54_completion.py').read_text()
+          assert 'V54_EMPIRICAL_COMPLETE' in completion
+          assert 'execution_authorized' in completion
           protocol = Path('docs/V54_FEATURE_AUDIT_PROTOCOL.md').read_text()
           assert 'V54_ENGINEERING_COMPLETE / V54_EMPIRICAL_RESULT_PENDING' in protocol
           print('v0.54 complete engineering/safety contract preserved')
