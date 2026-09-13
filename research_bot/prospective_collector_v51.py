@@ -19,10 +19,12 @@ import pandas as pd
 PREREGISTRATION_COMMIT_V51 = "d8ee4576aaf55750dd5910cc0d3b2efcbba3f5b2"
 CALENDAR_COMMIT_V51 = "6a8fa49de2d1befa9c17049aa61e13da20a028eb"
 PREDICTOR_IDENTITY_AMENDMENT_COMMIT_V51 = "4838c0d98c408d358929b0767676a5ac024bd8dd"
+EVIDENCE_INTEGRITY_ADDENDUM_COMMIT_V51 = "da5dcf5cd3568a92c75871016f000917c9380955"
 PREDICTOR_IDENTITY_POLICY_V51 = "V47_C1_LATEST_CANONICAL_FOLD_PER_ASSET"
 REJECTED_IDENTITY_DRAFT_COMMIT_V51 = "095814ae55f49714299cf6b8c4908427c92bc6f9"
 PROSPECTIVE_START_V51 = pd.Timestamp("2026-09-13T12:00:00Z")
 PROSPECTIVE_END_V51 = PROSPECTIVE_START_V51 + pd.Timedelta(days=150)
+MAX_CAPTURE_LAG_MINUTES_V51 = 60.0
 ALLOWED_VENUES_V51 = ("coinex", "okx", "kucoin")
 ALLOWED_ASSETS_V51 = ("BTC", "ETH", "SOL", "XRP", "DOGE")
 TIMEFRAME_V51 = "4h"
@@ -31,6 +33,7 @@ FETCH_LIMIT_V51 = 300
 
 RAW_COLUMNS = [
     "first_seen_at", "venue", "symbol", "bar_open_time", "bar_close_time",
+    "capture_lag_minutes", "prospective_eligible_v51",
     "open", "high", "low", "close", "volume", "source",
 ]
 RUN_COLUMNS = [
@@ -76,6 +79,13 @@ def validate_numeric_ohlcv(row: Iterable[float]) -> tuple[float, float, float, f
     return values
 
 
+def _capture_integrity(closed: pd.Timestamp, captured_at: pd.Timestamp) -> tuple[float, bool]:
+    lag_minutes = float((captured_at - closed).total_seconds() / 60.0)
+    in_window = bool(PROSPECTIVE_START_V51 <= closed < PROSPECTIVE_END_V51)
+    timely = bool(0.0 <= lag_minutes <= MAX_CAPTURE_LAG_MINUTES_V51)
+    return lag_minutes, bool(in_window and timely)
+
+
 def closed_rows_from_ccxt(
     rows: list[list[float]], *, venue: str, asset: str, captured_at: pd.Timestamp
 ) -> list[dict]:
@@ -94,12 +104,15 @@ def closed_rows_from_ccxt(
         if closed > captured_at:
             continue
         o, h, l, c, v = validate_numeric_ohlcv(raw[1:6])
+        lag_minutes, eligible = _capture_integrity(closed, captured_at)
         out.append({
             "first_seen_at": iso_utc(captured_at),
             "venue": venue,
             "symbol": canonical_symbol(asset),
             "bar_open_time": iso_utc(opened),
             "bar_close_time": iso_utc(closed),
+            "capture_lag_minutes": lag_minutes,
+            "prospective_eligible_v51": eligible,
             "open": o,
             "high": h,
             "low": l,
@@ -111,7 +124,7 @@ def closed_rows_from_ccxt(
 
 
 def merge_raw_evidence(existing: pd.DataFrame, incoming: pd.DataFrame) -> pd.DataFrame:
-    """Append new identities; fail closed if a previously closed bar is revised."""
+    """Append new identities; preserve first-seen and fail closed on revisions."""
     if existing.empty:
         return incoming.loc[:, RAW_COLUMNS].sort_values(IDENTITY_COLUMNS).reset_index(drop=True)
     old = existing.loc[:, RAW_COLUMNS].copy()
@@ -218,10 +231,12 @@ def collect(output_dir: Path, *, run_id: str, captured_at: pd.Timestamp) -> dict
     ok_count = int(current_audit["status"].eq("OK").sum())
     total_expected = len(ALLOWED_VENUES_V51) * len(ALLOWED_ASSETS_V51)
     health = "OK" if ok_count == total_expected else ("PARTIAL" if ok_count > 0 else "FAILED")
-    prospective_raw = 0
+    in_window = 0
+    prospective_eligible = 0
     if not merged.empty:
         closes = pd.to_datetime(merged["bar_close_time"], utc=True)
-        prospective_raw = int(((closes >= PROSPECTIVE_START_V51) & (closes < PROSPECTIVE_END_V51)).sum())
+        in_window = int(((closes >= PROSPECTIVE_START_V51) & (closes < PROSPECTIVE_END_V51)).sum())
+        prospective_eligible = int(merged["prospective_eligible_v51"].astype(bool).sum())
 
     manifest = {
         "experiment": "v0.51",
@@ -229,10 +244,12 @@ def collect(output_dir: Path, *, run_id: str, captured_at: pd.Timestamp) -> dict
         "preregistration_commit": PREREGISTRATION_COMMIT_V51,
         "calendar_commit": CALENDAR_COMMIT_V51,
         "predictor_identity_amendment_commit": PREDICTOR_IDENTITY_AMENDMENT_COMMIT_V51,
+        "evidence_integrity_addendum_commit": EVIDENCE_INTEGRITY_ADDENDUM_COMMIT_V51,
         "predictor_identity_policy": PREDICTOR_IDENTITY_POLICY_V51,
         "rejected_identity_draft_commit": REJECTED_IDENTITY_DRAFT_COMMIT_V51,
         "prospective_start": iso_utc(PROSPECTIVE_START_V51),
         "prospective_end": iso_utc(PROSPECTIVE_END_V51),
+        "max_capture_lag_minutes": MAX_CAPTURE_LAG_MINUTES_V51,
         "captured_at": iso_utc(captured_at),
         "run_id": run_id,
         "timeframe": TIMEFRAME_V51,
@@ -247,7 +264,8 @@ def collect(output_dir: Path, *, run_id: str, captured_at: pd.Timestamp) -> dict
         "successful_series_this_run": ok_count,
         "expected_series_per_run": total_expected,
         "raw_rows_total": int(len(merged)),
-        "raw_rows_in_prospective_window": prospective_raw,
+        "raw_rows_in_prospective_window": in_window,
+        "raw_rows_prospective_eligible": prospective_eligible,
         "raw_csv_sha256": sha256_path(raw_path),
         "collection_runs_csv_sha256": sha256_path(runs_path),
     }
