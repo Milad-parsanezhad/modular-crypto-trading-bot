@@ -87,6 +87,10 @@ def test_support_matrix_rejects_duplicates_and_nonfinite_counts():
     with pytest.raises(ValueError, match="duplicate"):
         validate_venue_block_support_v51(duplicated)
     bad = good.copy()
+    # pandas 3.x is intentionally strict about assigning float('inf') into an
+    # int64 column. Cast first so the test reaches the validator rather than
+    # failing inside pandas assignment machinery.
+    bad["conflict_cohorts"] = bad["conflict_cohorts"].astype(float)
     bad.loc[0, "conflict_cohorts"] = float("inf")
     with pytest.raises(ValueError, match="invalid conflict"):
         validate_venue_block_support_v51(bad)
