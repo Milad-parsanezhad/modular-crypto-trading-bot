@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.21",
+  "maturity_tier": "LEAKAGE_SAFE_EVENT_META_ML",
+  "evidence_class": "VERIFIED_REPOSITORY_RECORD",
+  "evaluation_basis": "Assessed as a benchmark and integrity layer: development fits, validation selects model and abstention threshold, and test is inspected only after freeze. Protocol existence is not economic proof.",
+  "original_objective": "Turn frozen v0.20 strategy events into causal labeled samples and compare broad classifier/regressor families as an abstention meta-layer.",
+  "scope": {"source_artifact_run": 34469292583, "classification_families_required_by_tests": 13, "regression_families_required_by_tests": 12, "minimum_selected_validation": 200},
+  "engineering_result": {"status": "IMPLEMENTED_FOR_STAGE", "summary": "Dataset construction, leakage bans, model zoo, validation-only threshold selection, frozen champion output and fail-closed PAPER gate are implemented and regression-tested."},
+  "scientific_result": {"status": "PROTOCOL_AND_LABEL_AUDIT_ESTABLISHED", "summary": "The audit showed severe class imbalance and timeframe-dependent label geometry; raw accuracy was explicitly rejected as the selection objective."},
+  "economic_result": {"status": "INSUFFICIENT_VERIFIED_RESULT_EVIDENCE", "summary": "The repository record available to this ledger does not contain a canonical completed tournament result proving that a frozen meta-model cleared the post-cost test gate."},
+  "provenance": {"run_id": null, "source_commit": null, "artifact_id": null, "artifact_name": "v21-labeled-ml-meta", "artifact_digest": null, "strength": "SOURCE_CODE_PROTOCOL_AND_TESTS; CANONICAL RESULT IDENTIFIERS NOT RECORDED"},
+  "safety": {"paper_execution": false, "live_execution": false, "real_money_orders": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["No canonical completed result identifiers in the reviewed record", "Meta-label performance cannot be inferred from implementation", "Class imbalance makes raw accuracy misleading", "Deep sequence and RL families deliberately excluded"],
+  "contribution_to_next_version": "Established causal event-level ML and reusable frozen features before testing unsupervised, temporal and visual representations.",
+  "classifications": ["ENGINEERING_PASS", "SCIENTIFIC_METHOD_PASS", "INSUFFICIENT_EVIDENCE", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/V21_LABELED_ML_META_PROTOCOL.md", "docs/V21_LABEL_AUDIT_FROM_V20.md", ".github/workflows/v21-labeled-ml-meta.yml"]
+}
