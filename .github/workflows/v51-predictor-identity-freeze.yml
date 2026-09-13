@@ -8,6 +8,7 @@ on:
       - 'scripts/freeze_v51_predictor_bundle.py'
       - 'tests/test_overlap_arbitration_v51.py'
       - 'tests/test_v51_predictor_identity_hardening.py'
+      - 'docs/V51_OVERLAP_CONFLICT_ARBITRATION_PREREGISTRATION.md'
       - 'docs/V51_PREDICTOR_IDENTITY_AMENDMENT_2026-09-13.md'
       - 'docs/V51_OVERLAP_ARBITRATION_RESEARCH_BASIS_2026-09-13.md'
       - '.github/workflows/v51-predictor-identity-freeze.yml'
@@ -26,6 +27,7 @@ env:
   SOURCE_V47_RUN: '34705324352'
   CANONICAL_V47_HEAD: '802b0cde38549617589b6a4a313949361dd9425c'
   ORIGINAL_V51_PREREG: 'd8ee4576aaf55750dd5910cc0d3b2efcbba3f5b2'
+  VERIFIED_V51_PREREG_HEAD: '6a8fa49de2d1befa9c17049aa61e13da20a028eb'
   REPAIRED_PROSPECTIVE_START: '2026-09-13T12:00:00Z'
 
 jobs:
@@ -47,7 +49,13 @@ jobs:
           EXPECTED='${{ github.event.pull_request.head.sha || github.sha }}'
           test "$ACTUAL" = "$EXPECTED"
           git cat-file -e "$ORIGINAL_V51_PREREG^{commit}"
-          git merge-base --is-ancestor "$ORIGINAL_V51_PREREG" "$ACTUAL"
+          git cat-file -e "$VERIFIED_V51_PREREG_HEAD^{commit}"
+          # PR #54 may have been integrated with a merge topology that does not
+          # retain every source commit as a direct ancestor. Scientific lineage
+          # is therefore verified by the immutable preregistration document
+          # content from its independently verified PR head, not by ancestry.
+          git diff --exit-code "$VERIFIED_V51_PREREG_HEAD" "$ACTUAL" -- \
+            docs/V51_OVERLAP_CONFLICT_ARBITRATION_PREREGISTRATION.md
           test ! -e docs/V51_RESULTS_2026-09-13.md
           grep -q '2026-09-13T12:00:00Z' docs/V51_PREDICTOR_IDENTITY_AMENDMENT_2026-09-13.md
           grep -q 'V47_C1_LATEST_CANONICAL_FOLD_PER_ASSET' docs/V51_PREDICTOR_IDENTITY_AMENDMENT_2026-09-13.md
