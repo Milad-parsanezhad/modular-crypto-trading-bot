@@ -1,7 +1,12 @@
 import pandas as pd
 import pytest
 
-from research_bot.overlap_arbitration_v51 import arbitrate_overlaps_v51
+from research_bot.overlap_arbitration_v51 import (
+    PROSPECTIVE_START_V51,
+    arbitrate_overlaps_v51,
+    assign_prospective_blocks_v51,
+    route_decision_v51,
+)
 
 
 def _row(series_id, entry, exit_, score, *, net_r=0.0, selected=True):
@@ -90,3 +95,47 @@ def test_duplicate_decision_identity_fails_closed():
     row = _row("a", "2026-09-14", "2026-09-15", 0.2)
     with pytest.raises(ValueError, match="identity"):
         arbitrate_overlaps_v51(pd.DataFrame([row, {**row, "net_r": 3.0}]))
+
+
+def test_prospective_blocks_have_immutable_30_day_boundaries():
+    frame = pd.DataFrame({
+        "signal_time": [PROSPECTIVE_START_V51, PROSPECTIVE_START_V51 + pd.Timedelta(days=30)],
+        "venue": ["coinex", "okx"],
+        "symbol": ["BTCUSDT", "ETHUSDT"],
+    })
+    out = assign_prospective_blocks_v51(frame)
+    assert out["prospective_block_v51"].tolist() == [1, 2]
+
+
+def test_pre_registration_or_forbidden_evidence_fails_closed():
+    frame = pd.DataFrame({
+        "signal_time": [PROSPECTIVE_START_V51 - pd.Timedelta(hours=4)],
+        "venue": ["kraken"],
+        "symbol": ["BTCUSDT"],
+    })
+    with pytest.raises(ValueError):
+        assign_prospective_blocks_v51(frame)
+
+
+def _route(**overrides):
+    values = dict(
+        conflict_counts=[20] * 5,
+        expectancy_deltas=[0.01, 0.02, -0.01, 0.03, -0.02],
+        aggregate_expectancy_a0=0.01,
+        aggregate_expectancy_a1=0.02,
+        profit_factor_a0=1.0,
+        profit_factor_a1=1.1,
+        stress_profit_factor_a0=0.95,
+        stress_profit_factor_a1=1.0,
+        worst_drawdown_a1=-0.04,
+        causal_checks_passed=True,
+    )
+    values.update(overrides)
+    return route_decision_v51(**values)
+
+
+def test_route_requires_support_and_every_frozen_gate():
+    assert _route() == "V51_ARBITRATION_ADVANCEMENT_SUPPORTED"
+    assert _route(conflict_counts=[20, 20, 20, 20, 9]) == "V51_INSUFFICIENT_PROSPECTIVE_SUPPORT"
+    assert _route(profit_factor_a1=0.9) == "V51_ARBITRATION_NOT_SUPPORTED"
+    assert _route(causal_checks_passed=False) == "V51_ARBITRATION_NOT_SUPPORTED"
