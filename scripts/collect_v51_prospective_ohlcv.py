@@ -5,7 +5,8 @@ from __future__ import annotations
 This collector does not score candidates, make arbitration decisions, submit
 orders, or enable PAPER/LIVE execution. It only persists public, closed 4-hour
 OHLCV bars for the frozen v0.51 venues/assets so later causal reconstruction
-can be audited from raw evidence.
+can be audited from raw evidence. Bars captured before the repaired prospective
+start are context/smoke data only and are excluded from prospective support.
 """
 
 import argparse
@@ -20,7 +21,8 @@ import pandas as pd
 
 PREREGISTRATION_COMMIT_V51 = "d8ee4576aaf55750dd5910cc0d3b2efcbba3f5b2"
 CALENDAR_COMMIT_V51 = "6a8fa49de2d1befa9c17049aa61e13da20a028eb"
-PROSPECTIVE_START_V51 = pd.Timestamp("2026-09-13T08:00:00Z")
+PREDICTOR_IDENTITY_DRAFT_COMMIT_V51 = "095814ae55f49714299cf6b8c4908427c92bc6f9"
+PROSPECTIVE_START_V51 = pd.Timestamp("2026-09-13T12:00:00Z")
 PROSPECTIVE_END_V51 = PROSPECTIVE_START_V51 + pd.Timedelta(days=150)
 ALLOWED_VENUES_V51 = ("coinex", "okx", "kucoin")
 ALLOWED_ASSETS_V51 = ("BTC", "ETH", "SOL", "XRP", "DOGE")
@@ -161,8 +163,6 @@ def collect(output_dir: Path, *, run_id: str, captured_at: pd.Timestamp) -> dict
     if captured_at.tzinfo is None:
         raise ValueError("captured_at must be timezone-aware")
     captured_at = captured_at.tz_convert("UTC")
-    if captured_at < PROSPECTIVE_START_V51:
-        raise RuntimeError("v0.51 collector cannot run before prospective start")
     if captured_at >= PROSPECTIVE_END_V51:
         raise RuntimeError("v0.51 collector is outside frozen 150-day window")
 
@@ -281,9 +281,11 @@ def collect(output_dir: Path, *, run_id: str, captured_at: pd.Timestamp) -> dict
         "role": "raw_public_market_evidence_only",
         "preregistration_commit": PREREGISTRATION_COMMIT_V51,
         "calendar_commit": CALENDAR_COMMIT_V51,
+        "predictor_identity_draft_commit": PREDICTOR_IDENTITY_DRAFT_COMMIT_V51,
         "prospective_start": _iso(PROSPECTIVE_START_V51),
         "prospective_end": _iso(PROSPECTIVE_END_V51),
         "captured_at": _iso(captured_at),
+        "prestart_smoke_context_only": bool(captured_at < PROSPECTIVE_START_V51),
         "run_id": run_id,
         "timeframe": TIMEFRAME_V51,
         "venues": list(ALLOWED_VENUES_V51),
