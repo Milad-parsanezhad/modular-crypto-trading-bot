@@ -91,6 +91,8 @@ def apply_transaction_costs_v52(returns: Iterable[float], positions: Iterable[fl
     p = np.asarray(list(positions), dtype=float)
     if r.shape != p.shape or r.ndim != 1 or not np.isfinite(r).all() or not np.isfinite(p).all():
         raise ValueError("returns and positions must be aligned finite vectors")
+    if np.any(r <= -1.0):
+        raise ValueError("simple returns <= -100% are invalid for this benchmark")
     if round_trip_bps < 0:
         raise ValueError("round_trip_bps must be non-negative")
     if np.any(np.abs(p) > 1):
@@ -99,6 +101,8 @@ def apply_transaction_costs_v52(returns: Iterable[float], positions: Iterable[fl
     turnover = np.abs(p - previous)
     one_way_cost = round_trip_bps / 20_000.0
     net = p * r - turnover * one_way_cost
+    if np.any(net <= -1.0):
+        raise ValueError("net return <= -100% violates benchmark equity assumptions")
     return net, float(turnover.sum())
 
 
@@ -106,7 +110,10 @@ def performance_metrics_v52(net_returns: Iterable[float], *, turnover: float = 0
     r = np.asarray(list(net_returns), dtype=float)
     if r.ndim != 1 or len(r) < 2 or not np.isfinite(r).all():
         raise ValueError("net_returns must contain at least two finite values")
-    equity = np.cumprod(1.0 + r)
+    if np.any(r <= -1.0) or periods_per_year <= 0:
+        raise ValueError("invalid return or annualization domain")
+    log_growth = np.log1p(r)
+    equity = np.exp(np.cumsum(log_growth))
     cumulative = float(equity[-1] - 1.0)
     std = float(r.std(ddof=1))
     sharpe = float(r.mean() / std * np.sqrt(periods_per_year)) if std > 0 else 0.0
@@ -116,15 +123,18 @@ def performance_metrics_v52(net_returns: Iterable[float], *, turnover: float = 0
     peak = np.maximum.accumulate(equity)
     dd = equity / peak - 1.0
     mdd = float(dd.min())
-    years = len(r) / periods_per_year
-    cagr = float(equity[-1] ** (1.0 / years) - 1.0) if years > 0 and equity[-1] > 0 else -1.0
+    annual_log_growth = float(log_growth.mean() * periods_per_year)
+    cagr = float(np.exp(np.clip(annual_log_growth, -50.0, 50.0)) - 1.0)
     calmar = float(cagr / abs(mdd)) if mdd < 0 else 0.0
     gains = float(r[r > 0].sum())
     losses = float(-r[r < 0].sum())
-    pf = float(gains / losses) if losses > 0 else (float("inf") if gains > 0 else 0.0)
-    cutoff = np.quantile(r, 0.05)
+    pf = float(gains / losses) if losses > 0 else (1e12 if gains > 0 else 0.0)
+    cutoff = float(np.quantile(r, 0.05))
     tail = r[r <= cutoff]
     cvar95 = float(-tail.mean()) if len(tail) else 0.0
+    values = np.asarray([cumulative, sharpe, sortino, mdd, calmar, pf, turnover, cvar95], dtype=float)
+    if not np.isfinite(values).all():
+        raise ValueError("non-finite performance metric")
     return PerformanceV52(len(r), cumulative, sharpe, sortino, mdd, calmar, pf, float(turnover), cvar95)
 
 
