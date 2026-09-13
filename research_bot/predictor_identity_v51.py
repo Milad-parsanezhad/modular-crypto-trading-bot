@@ -126,7 +126,6 @@ def _strict_verification_row(raw: Any, expected_symbol: str) -> PredictorVerific
         )
     except (TypeError, ValueError, OverflowError) as exc:
         raise ValueError("invalid v0.51 verification row values") from exc
-    # Reject bool-as-int and lossy/coerced row counts.
     if isinstance(raw["rows"], bool) or row.rows != raw["rows"]:
         raise ValueError("invalid v0.51 verification row count")
     if row.fold != V51_PRODUCTION_FOLD:
@@ -152,6 +151,9 @@ def assert_verified_manifest(payload: dict[str, Any]) -> None:
         "production_symbols": list(V51_PRODUCTION_SYMBOLS),
         "repaired_prospective_start": V51_REPAIRED_PROSPECTIVE_START,
     }
+    expected_top_keys = set(immutable) | {"verifications", "all_verified", "manifest_sha256"}
+    if set(payload) != expected_top_keys:
+        raise ValueError("unexpected v0.51 manifest schema")
     for key, expected in immutable.items():
         if payload.get(key) != expected:
             raise ValueError(f"unexpected v0.51 manifest field: {key}")
