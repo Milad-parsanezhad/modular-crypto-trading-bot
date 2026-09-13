@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from scripts.validate_evidence_ledger import validate_ledger, validate_record
+from research_bot.evidence_ledger import validate_ledger, validate_record
 
 
 def test_repository_evidence_ledger_is_valid():
