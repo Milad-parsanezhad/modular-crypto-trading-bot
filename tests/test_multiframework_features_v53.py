@@ -135,3 +135,9 @@ def test_asof_join_uses_available_at_not_bar_timestamp():
 def test_feature_config_rejects_invalid_thresholds():
     with pytest.raises(ValueError):
         build_v53_feature_frame(_sample(60), V53FeatureConfig(brooks_trend_slope_atr=0.01, brooks_range_slope_atr=0.02))
+
+
+def test_every_ontology_output_is_materialized_by_feature_engine():
+    feat = build_v53_feature_frame(_sample())
+    missing = set(output_to_concept()) - set(feat.columns)
+    assert missing == set()
