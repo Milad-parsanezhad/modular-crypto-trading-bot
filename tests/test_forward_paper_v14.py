@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from research_bot.coinex_depth import DepthSnapshot
-from research_bot.forward_paper_v14 import ForwardPaperConfig, ForwardPaperRunner
+from research_bot.forward_paper_v14 import ForwardPaperConfig, ForwardPaperRunner, STRATEGY_VERSION
 from research_bot.persistence import MemoryPaperStore
 
 
@@ -127,3 +127,30 @@ def test_fill_uses_live_executable_quote_not_old_candle_close():
     expected_fill = expected_ask * (1 + runner.config.slippage_bps / 10000.0)
     assert abs(out["fill"]["fill_price"] - expected_fill) < 1e-9
     assert abs(out["fill"]["fill_price"] - candle_close) > candle_close * 0.05
+
+
+def test_restart_recovers_observed_but_unsettled_actionable_bar():
+    frame = bullish_bars()
+    now = pd.Timestamp(frame["timestamp"].iloc[-1]).to_pydatetime() + timedelta(hours=5)
+    bar_ts = pd.Timestamp(frame["timestamp"].iloc[-1]).to_pydatetime()
+    store = MemoryPaperStore(10_000.0)
+    # Simulate a crash after the observation was committed but before any fill
+    # or account/position mutation occurred.
+    assert store.record_observation(
+        {
+            "bar_timestamp": bar_ts.isoformat(),
+            "symbol": "BTC/USDT",
+            "strategy_version": STRATEGY_VERSION,
+        }
+    )
+    runner = ForwardPaperRunner(
+        store,
+        config=ForwardPaperConfig(symbols=("BTC/USDT",), entry_rule_score=0.8),
+        market_client=FakeMarket(frame, depth_timestamp=now),
+        paper_execution_enabled=True,
+    )
+    result = runner.run_cycle(now=now)["results"][0]
+    assert result["status"] == "EXECUTED_PAPER"
+    assert result["recovery_attempt"] is True
+    assert store.summary()["fills"] == 1
+    assert store.get_position("BTC/USDT").quantity > 0
