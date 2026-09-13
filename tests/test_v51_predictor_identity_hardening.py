@@ -183,3 +183,11 @@ def test_manifest_rejects_missing_or_extra_row_fields():
     extra = _rehash(extra)
     with pytest.raises(ValueError, match="row schema"):
         assert_verified_manifest(extra)
+
+
+def test_manifest_rejects_rehashed_unknown_top_level_field():
+    forged = _valid_manifest()
+    forged["trusted_by_external_source"] = True
+    forged = _rehash(forged)
+    with pytest.raises(ValueError, match="manifest schema"):
+        assert_verified_manifest(forged)
