@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.20",
+  "maturity_tier": "GLOBAL_STRATEGY_AND_EXTERNAL_REPLICATION",
+  "evidence_class": "VERIFIED_CANONICAL",
+  "evaluation_basis": "Assessed against its frozen internal eligibility, conservative multiplicity screen and independent OKX replication gate; external risk failure is binding.",
+  "original_objective": "Run an expanded source-grounded global strategy tournament and require external-venue replication before any forward-PAPER decision.",
+  "scope": {"date": "2026-09-10", "internal_winner": "H4_S6_BREAKOUT", "external_venue": "OKX", "external_markets": 20, "friction_round_trip_bps": 24},
+  "engineering_result": {"status": "PASS_AFTER_FIXES", "summary": "The workflow completed after timestamp-resolution and segment-risk-state fixes and saved seven frozen result files with a workflow-reported digest."},
+  "scientific_result": {"status": "NO_STRATEGY_PROMOTED", "summary": "Three 4h candidates cleared the internal gate, but the validation-selected winner failed the pre-registered external maximum-drawdown threshold."},
+  "economic_result": {"status": "POSITIVE_EXTERNAL_ECONOMICS_BUT_RISK_GATE_FAIL", "summary": "OKX replication produced 592 trades, PF 1.8615, expectancy 0.4555R and 76.64% research-sized return, but -5.5751% MDD breached the frozen -5% ceiling."},
+  "provenance": {"run_id": 34469292583, "source_commit": null, "artifact_id": null, "artifact_name": "v20-global-strategy-risk-lab", "artifact_digest": "sha256:c1ad2ec8b5b16b15258a5dbb893534714a418532bb3bb361a13878888dbf3ea9", "strength": "WORKFLOW_AND_HASHED_ARTIFACT; ARTIFACT_ID_AND_SOURCE_COMMIT_NOT_RECORDED_IN_LOCAL_REPORT"},
+  "safety": {"paper_execution": false, "live_execution": false, "real_money_orders": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["External replication used one venue", "External MDD exceeded the registered ceiling", "Multiplicity screen was not claimed as SPA, Reality Check, DSR or PBO", "No paper replacement authorized"],
+  "contribution_to_next_version": "Created the frozen event ledger used to audit label geometry and build the leakage-safe v0.21 meta-label benchmark.",
+  "classifications": ["ENGINEERING_PASS", "SCIENTIFIC_METHOD_PASS", "HYPOTHESIS_REJECTED", "DIAGNOSTIC_SUCCESS", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/V20_GLOBAL_SOURCE_STRATEGY_RESEARCH.md", "docs/V20_RESULTS_2026-09-10.md", "docs/V20_IMPLEMENTATION_NOTES.md"]
+}

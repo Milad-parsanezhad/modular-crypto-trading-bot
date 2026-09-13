@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.24",
+  "maturity_tier": "PORTFOLIO_EXPOSURE_DIAGNOSTIC",
+  "evidence_class": "VERIFIED_REPOSITORY_RECORD",
+  "evaluation_basis": "Assessed as an audit-only diagnostic. It changes neither signals nor thresholds nor promotion gates, and its rankings cannot authorize a candidate.",
+  "original_objective": "Measure concurrent positions, gross exposure and concentration for every frozen candidate under corrected causal settlement timing.",
+  "scope": {"frozen_input_run": 34469292583, "frozen_input_artifact": "v20-global-strategy-risk-lab", "decision_contract": "PORTFOLIO_EXPOSURE_AUDIT_ONLY"},
+  "engineering_result": {"status": "AUDIT_IMPLEMENTED", "summary": "Portfolio exposure metrics, candidate rankings, immutable decision output, focused tests and an artifact-producing workflow are implemented."},
+  "scientific_result": {"status": "DIAGNOSTIC_ONLY", "summary": "The code explicitly prevents exposure rankings from relaxing the 5% drawdown gate or becoming a post-hoc promotion rule."},
+  "economic_result": {"status": "NO_ALPHA_CLAIM", "summary": "Exposure measurement can explain risk but does not itself demonstrate positive net out-of-sample expectancy or authorize forward PAPER."},
+  "provenance": {"run_id": null, "source_commit": null, "artifact_id": null, "artifact_name": "v24-portfolio-exposure-audit", "artifact_digest": null, "strength": "SOURCE_CODE_WORKFLOW_AND_TESTS; CANONICAL RESULT IDENTIFIERS NOT_RECORDED"},
+  "safety": {"paper_execution": false, "live_execution": false, "real_money_orders": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["Audit reuses consumed v0.20 historical evidence", "No signal or promotion-gate change", "Risk attribution is not causal alpha proof", "Canonical run identifiers absent from reviewed record"],
+  "contribution_to_next_version": "Provided portfolio diagnostics needed to compare the explicit allocator against v0.23 earliest-first acceptance in v0.25.",
+  "classifications": ["ENGINEERING_PASS", "SCIENTIFIC_METHOD_PASS", "DIAGNOSTIC_SUCCESS", "INSUFFICIENT_EVIDENCE", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["research_bot/portfolio_exposure_v24.py", "scripts/run_v24_portfolio_exposure_audit.py", ".github/workflows/v24-portfolio-exposure-audit.yml"]
+}

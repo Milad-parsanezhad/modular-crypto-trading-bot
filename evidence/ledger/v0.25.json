@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.25",
+  "maturity_tier": "CAUSAL_PORTFOLIO_ALLOCATOR_TOURNAMENT",
+  "evidence_class": "VERIFIED_REPOSITORY_RECORD",
+  "evaluation_basis": "Assessed as an allocator challenger on frozen historical attempts; internal eligibility can only nominate fresh replication and cannot replace the current research shell.",
+  "original_objective": "Compare a causal portfolio allocator with v0.23 earliest-first event acceptance while preserving signal generation, friction and frozen strategy gates.",
+  "scope": {"frozen_input_run": 34469292583, "frozen_input_artifact": "v20-global-strategy-risk-lab", "comparison": "v0.23 earliest-first versus v0.25 portfolio allocator"},
+  "engineering_result": {"status": "ALLOCATOR_AND_TOURNAMENT_IMPLEMENTED", "summary": "The allocator, causal evaluation adapter, comparison artifact, decision output, focused tests and CI workflow are implemented."},
+  "scientific_result": {"status": "CHALLENGER_NOT_PROMOTED", "summary": "The recorded research outcome did not authorize the allocator challenger; fresh prospective evidence remained necessary."},
+  "economic_result": {"status": "NO_PRODUCTION_QUALIFYING_EVIDENCE", "summary": "Historical allocator comparison did not establish a production-qualified edge and did not authorize PAPER replacement or LIVE execution."},
+  "provenance": {"run_id": 34590214474, "source_commit": null, "artifact_id": 10195326409, "artifact_name": "v25-portfolio-allocator-tournament", "artifact_digest": null, "strength": "RECORDED_WORKFLOW_AND_ARTIFACT_IDS_PLUS_SOURCE_CODE; SOURCE_COMMIT_AND_DIGEST_NOT_RECORDED"},
+  "safety": {"paper_execution": false, "live_execution": false, "real_money_orders": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["Historical source evidence was already observed", "Allocator selection can introduce a new optimization layer", "Fresh venue/time replication required", "Artifact digest and source commit unavailable in reviewed record"],
+  "contribution_to_next_version": "Exposed overlap-conflict arbitration as the next scientific bottleneck and motivated prospective, blinded comparison rather than further reuse of consumed history.",
+  "classifications": ["ENGINEERING_PASS", "SCIENTIFIC_METHOD_PASS", "HYPOTHESIS_REJECTED", "DIAGNOSTIC_SUCCESS", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["research_bot/portfolio_allocator_v25.py", "research_bot/causal_evaluation_v25.py", "scripts/run_v25_portfolio_allocator_tournament.py", ".github/workflows/v25-portfolio-allocator-tournament.yml"]
+}
