@@ -6,6 +6,7 @@ from scripts.collect_v51_prospective_ohlcv import (
     ALLOWED_VENUES_V51,
     CALENDAR_COMMIT_V51,
     PREREGISTRATION_COMMIT_V51,
+    PREDICTOR_IDENTITY_AMENDMENT,
     PROSPECTIVE_START_V51,
     RAW_COLUMNS,
     closed_rows_from_ccxt,
@@ -20,7 +21,8 @@ def _ms(ts: str) -> int:
 def test_frozen_governance_constants_are_exact():
     assert PREREGISTRATION_COMMIT_V51 == "d8ee4576aaf55750dd5910cc0d3b2efcbba3f5b2"
     assert CALENDAR_COMMIT_V51 == "6a8fa49de2d1befa9c17049aa61e13da20a028eb"
-    assert PROSPECTIVE_START_V51 == pd.Timestamp("2026-09-13T08:00:00Z")
+    assert PREDICTOR_IDENTITY_AMENDMENT == "V47_C1_LATEST_CANONICAL_FOLD_PER_ASSET"
+    assert PROSPECTIVE_START_V51 == pd.Timestamp("2026-09-13T12:00:00Z")
     assert set(ALLOWED_VENUES_V51) == {"coinex", "okx", "kucoin"}
     assert set(ALLOWED_ASSETS_V51) == {"BTC", "ETH", "SOL", "XRP", "DOGE"}
     assert "kraken" not in ALLOWED_VENUES_V51
@@ -49,7 +51,7 @@ def test_forbidden_venue_fails_closed():
             [[_ms("2026-09-13 04:00:00"), 100, 110, 90, 105, 12]],
             venue="kraken",
             asset="BTC",
-            captured_at=pd.Timestamp("2026-09-13T09:00:00Z"),
+            captured_at=pd.Timestamp("2026-09-13T13:00:00Z"),
         )
 
 
@@ -59,14 +61,14 @@ def test_nonfinite_or_impossible_ohlcv_fails_closed():
             [[_ms("2026-09-13 04:00:00"), 100, float("nan"), 90, 105, 12]],
             venue="coinex",
             asset="BTC",
-            captured_at=pd.Timestamp("2026-09-13T09:00:00Z"),
+            captured_at=pd.Timestamp("2026-09-13T13:00:00Z"),
         )
     with pytest.raises(ValueError):
         closed_rows_from_ccxt(
             [[_ms("2026-09-13 04:00:00"), 100, 99, 90, 105, 12]],
             venue="coinex",
             asset="BTC",
-            captured_at=pd.Timestamp("2026-09-13T09:00:00Z"),
+            captured_at=pd.Timestamp("2026-09-13T13:00:00Z"),
         )
 
 
