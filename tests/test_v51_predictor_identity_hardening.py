@@ -1,3 +1,5 @@
+import copy
+
 import pandas as pd
 import pytest
 
@@ -16,6 +18,7 @@ from research_bot.predictor_identity_v51 import (
     V51_PRODUCTION_SYMBOLS,
     V51_REPAIRED_PROSPECTIVE_START,
     assert_verified_manifest,
+    canonical_json_sha256,
     verification_manifest,
 )
 
@@ -87,9 +90,6 @@ def test_support_matrix_rejects_duplicates_and_nonfinite_counts():
     with pytest.raises(ValueError, match="duplicate"):
         validate_venue_block_support_v51(duplicated)
     bad = good.copy()
-    # pandas 3.x is intentionally strict about assigning float('inf') into an
-    # int64 column. Cast first so the test reaches the validator rather than
-    # failing inside pandas assignment machinery.
     bad["conflict_cohorts"] = bad["conflict_cohorts"].astype(float)
     bad.loc[0, "conflict_cohorts"] = float("inf")
     with pytest.raises(ValueError, match="invalid conflict"):
@@ -112,7 +112,7 @@ def test_route_fails_closed_on_infinite_metric():
     assert decision == "V51_ARBITRATION_NOT_SUPPORTED"
 
 
-def test_predictor_verification_manifest_is_fail_closed():
+def _valid_manifest():
     rows = [
         PredictorVerificationV51(
             symbol=symbol,
@@ -126,10 +126,60 @@ def test_predictor_verification_manifest_is_fail_closed():
         )
         for symbol in V51_PRODUCTION_SYMBOLS
     ]
-    manifest = verification_manifest(rows)
+    return verification_manifest(rows)
+
+
+def _rehash(payload):
+    payload = copy.deepcopy(payload)
+    payload.pop("manifest_sha256", None)
+    payload["manifest_sha256"] = canonical_json_sha256(payload)
+    return payload
+
+
+def test_predictor_verification_manifest_is_fail_closed():
+    manifest = _valid_manifest()
     assert manifest["all_verified"] is True
     assert_verified_manifest(manifest)
     bad = dict(manifest)
     bad["all_verified"] = False
-    with pytest.raises(ValueError, match="not fully verified"):
+    with pytest.raises(ValueError):
         assert_verified_manifest(bad)
+
+
+def test_manifest_rejects_tamper_even_if_all_verified_remains_true():
+    forged = _valid_manifest()
+    forged["canonical_v47_head"] = "0" * 40
+    with pytest.raises(ValueError, match="manifest field"):
+        assert_verified_manifest(forged)
+
+
+def test_manifest_rejects_rehashed_fake_metrics():
+    forged = _valid_manifest()
+    forged["verifications"][0]["max_abs_expected_r_error"] = 0.25
+    forged["verifications"][0]["passed"] = True
+    forged["all_verified"] = True
+    forged = _rehash(forged)
+    with pytest.raises(ValueError, match="metrics fail closed"):
+        assert_verified_manifest(forged)
+
+
+def test_manifest_rejects_duplicate_symbol_with_valid_hash():
+    forged = _valid_manifest()
+    forged["verifications"][1]["symbol"] = V51_PRODUCTION_SYMBOLS[0]
+    forged = _rehash(forged)
+    with pytest.raises(ValueError, match="unexpected or duplicate"):
+        assert_verified_manifest(forged)
+
+
+def test_manifest_rejects_missing_or_extra_row_fields():
+    missing = _valid_manifest()
+    missing["verifications"][0].pop("mean_abs_expected_r_error")
+    missing = _rehash(missing)
+    with pytest.raises(ValueError, match="row schema"):
+        assert_verified_manifest(missing)
+
+    extra = _valid_manifest()
+    extra["verifications"][0]["trusted"] = True
+    extra = _rehash(extra)
+    with pytest.raises(ValueError, match="row schema"):
+        assert_verified_manifest(extra)
