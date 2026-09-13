@@ -3,6 +3,8 @@
 Status: **DESIGN FROZEN BEFORE v0.51 PROSPECTIVE OUTCOMES**  
 Parent scientific result: `V50_NONOVERLAP_FAILURE_SUPPORTED`  
 Engineering parent: `deploy/research-v50@7cf4410ba5de2b5e4feb2224b53b5ddccadb7af5`
+Immutable preregistration commit: `d8ee4576aaf55750dd5910cc0d3b2efcbba3f5b2`  
+Immutable preregistration time: `2026-09-13T04:49:28Z`
 
 ## Question
 
@@ -65,7 +67,7 @@ slot becomes flat; it is not part of the priority key.
 
 Evaluation is deferred until all support conditions are met:
 
-- five consecutive, predeclared chronological blocks from post-registration data;
+- five consecutive 30-day UTC blocks beginning `2026-09-13T08:00:00Z`;
 - at least 100 simultaneous conflict cohorts overall;
 - at least 10 simultaneous conflict cohorts in every block;
 - exact common candidate input for A0 and A1;
