@@ -415,6 +415,22 @@ class ForwardPaperRunner:
             # spread is already represented by bid/ask selection; do not charge it twice.
             extra_slippage_bps=0.0,
         )
+        if fill.filled_quantity == 0.0:
+            self.execution.release_unsettled(client_order_id)
+            return {
+                "symbol": symbol,
+                "status": "NO_LIQUIDITY",
+                "signal": asdict(signal),
+                "risk": asdict(risk),
+                "fill": {
+                    **asdict(fill),
+                    "side": fill.side.value,
+                    "mode": fill.mode.value,
+                    "timestamp": fill.timestamp.isoformat(),
+                },
+                "account": asdict(account),
+            }
+
         metadata = {
             "rule_score": signal.rule_score,
             "risk_reasons": list(risk.reasons),
