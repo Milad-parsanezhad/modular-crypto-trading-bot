@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-import json
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from research_bot.feature_audit_v54 import V54AuditConfig, _backtest_predictions
+from research_bot.feature_audit_v54 import _backtest_predictions
+from research_bot.v54_completion import assess_v54_completion
 from research_bot.v54_integrity import (
     V54FeatureHealthConfig,
     dataset_manifest_v54,
@@ -52,6 +51,10 @@ def test_dataset_manifest_is_deterministic_and_schema_bound():
     changed.loc[10, "close"] *= 1.01
     c = dataset_manifest_v54(changed, symbol="BTC/USDT")
     assert c["frame_sha256"] != a["frame_sha256"]
+    changed_feature = frame.copy()
+    changed_feature.loc[10, "smc_feature"] += 9.0
+    d = dataset_manifest_v54(changed_feature, symbol="BTC/USDT")
+    assert d["frame_sha256"] != a["frame_sha256"]
 
 
 def test_feature_health_rejects_constant_and_mostly_missing_without_using_target():
@@ -123,3 +126,46 @@ def test_cross_symbol_promotion_is_research_only():
     assert fam["execution_authorized"] is False
     assert out["paper_execution"] is False
     assert out["live_execution"] is False
+
+
+def test_completion_gate_requires_provenance_and_complete_artifacts():
+    symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+    manifests = {
+        symbol: {
+            "frame_sha256": "a" * 64,
+            "schema_sha256": "b" * 64,
+            "rows": 1000,
+            "decision_start": "2026-01-01T00:00:00+00:00",
+            "decision_end": "2026-02-01T00:00:00+00:00",
+        }
+        for symbol in symbols
+    }
+    audit = {
+        "paper_execution": False,
+        "live_execution": False,
+        "variants": {"ALL": {"aggregate": {}}},
+        "family_value": {"ICHIMOKU": {"all_minus_drop_sharpe": 0.1}},
+    }
+    report = {
+        "source_commit": "1" * 40,
+        "symbols_completed": symbols,
+        "dataset_manifests": manifests,
+        "per_symbol": {symbol: audit for symbol in symbols},
+        "cross_symbol_evidence": {
+            "paper_execution": False,
+            "live_execution": False,
+            "families": {"ICHIMOKU": {"promotion_candidate": True, "paired_return_support": False}},
+        },
+        "paper_execution": False,
+        "live_execution": False,
+    }
+    out = assess_v54_completion(report)
+    assert out["complete"] is True
+    assert out["empirical_status"] == "V54_EMPIRICAL_COMPLETE"
+    assert out["execution_authorized"] is False
+
+    broken = dict(report)
+    broken["source_commit"] = None
+    out2 = assess_v54_completion(broken)
+    assert out2["complete"] is False
+    assert "SOURCE_COMMIT_MISSING" in out2["reasons"]
