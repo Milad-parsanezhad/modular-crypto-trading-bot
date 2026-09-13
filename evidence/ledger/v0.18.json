@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.18",
+  "maturity_tier": "COST_AWARE_AND_EXTERNAL_REGIME_REPLICATION",
+  "evidence_class": "VERIFIED_CANONICAL",
+  "evaluation_basis": "Assessed against two frozen hypotheses with holdout-safe thresholds and paired moving-block inference; risk improvement cannot substitute for statistical alpha evidence.",
+  "original_objective": "Test cost-aware abstention as an alpha-conversion mechanism and externally replicate the v0.11 HIGH_VOL/TREND_DOWN Ichimoku condition on OKX.",
+  "scope": {"date": "2026-09-10", "experiment_a": "CoinEx BTC/ETH 4h, 540 holdout periods", "experiment_b": "OKX BTC/ETH 4h, 1748 periods", "paper_replacement_allowed": false},
+  "engineering_result": {"status": "PASS_FOR_STAGE", "summary": "Both frozen experiments, cost accounting, point-in-time regimes, paired bootstrap and hashed result artifact completed successfully."},
+  "scientific_result": {"status": "BOTH_HYPOTHESES_NOT_SUPPORTED_FOR_PROMOTION", "summary": "Decisions were NO_COST_AWARE_CONVERSION_EVIDENCE and NO_EXTERNAL_REGIME_REPLICATION_EVIDENCE because both confidence intervals crossed zero."},
+  "economic_result": {"status": "RISK_IMPROVEMENT_WITHOUT_PROVEN_ALPHA", "summary": "Cost-aware: -7.48% to +0.048%, MDD -13.57% to -1.32%, turnover 114 to 10. External conditioned Ichimoku: -9.07% to -2.79%, MDD -30.96% to -17.99%; still negative and statistically inconclusive."},
+  "provenance": {"run_id": 34404326283, "source_commit": "b394b98ebd0957117615ea9d57bc47ec1f569afd", "artifact_id": 10124733622, "artifact_name": "v18-cost-aware-regime-results", "artifact_digest": "sha256:655cf19fee5e7d181111b579e9b273f0fef307ce6939e0170f68e55b18d17c54", "strength": "COMMIT_WORKFLOW_AND_HASHED_ARTIFACT"},
+  "safety": {"paper_execution": false, "live_execution": false, "real_money_orders": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["Both bootstrap intervals crossed zero", "Conditioned Ichimoku remained net negative", "Cost-aware exposure only 1.48%", "Spent holdouts cannot be tuned", "No paper replacement authorized"],
+  "contribution_to_next_version": "Retained cost-aware abstention as a risk-control hypothesis and required new strategy families/evidence rather than promoting attractive risk reductions.",
+  "classifications": ["ENGINEERING_PASS", "SCIENTIFIC_METHOD_PASS", "HYPOTHESIS_REJECTED", "DIAGNOSTIC_SUCCESS", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/V18_RESULTS_2026-09-10.md", "docs/V18_COST_AWARE_REGIME_PROTOCOL.md"]
+}
