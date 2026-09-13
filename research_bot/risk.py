@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Iterable
 
 import numpy as np
@@ -78,6 +79,33 @@ class RiskEngine:
         reasons: list[str] = []
         hard = False
 
+        scalar_values = (
+            snapshot.equity,
+            snapshot.peak_equity,
+            snapshot.gross_exposure,
+            snapshot.asset_weight,
+            snapshot.turnover,
+            snapshot.spread_bps,
+            snapshot.slippage_bps,
+        )
+        invalid = (
+            not all(math.isfinite(float(value)) for value in scalar_values)
+            or snapshot.equity <= 0.0
+            or snapshot.peak_equity <= 0.0
+            or snapshot.gross_exposure < 0.0
+            or snapshot.asset_weight < 0.0
+            or snapshot.turnover < 0.0
+            or snapshot.spread_bps < 0.0
+            or snapshot.slippage_bps < 0.0
+        )
+        if invalid:
+            return RiskDecision(
+                approved=False,
+                kill_switch=True,
+                reasons=("INVALID_RISK_SNAPSHOT",),
+                cvar_95=None,
+            )
+
         if snapshot.drawdown >= self.limits.max_drawdown:
             reasons.append("MAX_DRAWDOWN_BREACH")
             hard = True
@@ -120,6 +148,9 @@ class RiskEngine:
         optimizers must beat it out-of-sample before replacing it.
         """
 
+        values = (equity, stop_distance_fraction, risk_fraction, volatility_scale)
+        if not all(math.isfinite(float(value)) for value in values):
+            raise ValueError("position-sizing inputs must be finite")
         if equity <= 0:
             return 0.0
         if stop_distance_fraction <= 0:
