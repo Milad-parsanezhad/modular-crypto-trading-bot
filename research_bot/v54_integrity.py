@@ -57,18 +57,16 @@ def dataset_manifest_v54(
     missing = required.difference(frame.columns)
     if missing:
         raise ValueError(f"manifest missing required columns: {sorted(missing)}")
-    ts = pd.to_datetime(frame["timestamp"], utc=True, errors="raise")
-    decision = pd.to_datetime(frame[decision_time_col], utc=True, errors="raise")
     if len(frame) == 0:
         raise ValueError("cannot manifest empty frame")
+    ts = pd.to_datetime(frame["timestamp"], utc=True, errors="raise")
+    decision = pd.to_datetime(frame[decision_time_col], utc=True, errors="raise")
     if ts.duplicated().any() or decision.duplicated().any():
         raise ValueError("manifest frame contains duplicate timestamps")
-    provenance_cols = [
-        c for c in (
-            "timestamp", decision_time_col, "bar_open_at", "bar_close_at",
-            "1h_available_at", "4h_available_at", "open", "high", "low", "close", "volume",
-        ) if c in frame.columns
-    ]
+    # Freeze the complete engineered frame, not only OHLCV. Any later mutation
+    # of a derived feature, PIT availability column or market value must alter
+    # this fingerprint and fail replay.
+    all_columns = list(frame.columns)
     return {
         "protocol": "v0.54",
         "symbol": symbol,
@@ -78,9 +76,9 @@ def dataset_manifest_v54(
         "bar_open_end": ts.iloc[-1].isoformat(),
         "decision_start": decision.iloc[0].isoformat(),
         "decision_end": decision.iloc[-1].isoformat(),
-        "frame_sha256": canonical_frame_sha256(frame, provenance_cols),
+        "frame_sha256": canonical_frame_sha256(frame, all_columns),
         "schema_sha256": schema_sha256(frame),
-        "columns": list(frame.columns),
+        "columns": all_columns,
         "decision_time_col": decision_time_col,
         "paper_execution": False,
         "live_execution": False,
