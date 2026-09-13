@@ -5,6 +5,12 @@ on:
     branches: ["v18-cost-aware-regime-replication"]
   pull_request:
     branches: ["main"]
+    paths:
+      - "research_bot/*v18*.py"
+      - "scripts/*v18*.py"
+      - "tests/*v18*.py"
+      - "docs/V18*.md"
+      - ".github/workflows/v18-cost-aware-regime.yml"
   workflow_dispatch:
 
 jobs:
