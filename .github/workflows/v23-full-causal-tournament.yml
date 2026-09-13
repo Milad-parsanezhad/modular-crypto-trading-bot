@@ -1,0 +1,60 @@
+name: v23-full-causal-tournament
+
+on:
+  pull_request:
+    paths:
+      - "research_bot/risk_causality_v23.py"
+      - "research_bot/causal_evaluation_v23.py"
+      - "scripts/run_v23_full_causal_tournament.py"
+      - "tests/test_risk_causality_v23.py"
+      - ".github/workflows/v23-full-causal-tournament.yml"
+  push:
+    branches:
+      - "research/v20-global-strategy-risk-lab"
+    paths:
+      - "research_bot/risk_causality_v23.py"
+      - "research_bot/causal_evaluation_v23.py"
+      - "scripts/run_v23_full_causal_tournament.py"
+      - "tests/test_risk_causality_v23.py"
+      - ".github/workflows/v23-full-causal-tournament.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  full-frozen-causal-rerank:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install research package
+        run: python -m pip install -e '.[dev]'
+      - name: Lock causal accounting invariants
+        run: python -m pytest -q tests/test_risk_causality_v23.py
+      - name: Download frozen v0.20 evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: v20-global-strategy-risk-lab
+          path: frozen-v20
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 34482338133
+      - name: Rerank all 42 frozen candidates causally
+        run: >-
+          python scripts/run_v23_full_causal_tournament.py
+          --v20-artifact-dir frozen-v20
+          --output-dir artifacts/v23-full-causal-tournament
+      - name: Print v0.23 decision
+        run: cat artifacts/v23-full-causal-tournament/decision_v23.json
+      - name: Upload full v0.23 tournament evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v23-full-causal-tournament
+          path: artifacts/v23-full-causal-tournament
+          retention-days: 30

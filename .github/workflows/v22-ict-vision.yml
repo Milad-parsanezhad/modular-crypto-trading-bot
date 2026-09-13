@@ -1,0 +1,57 @@
+name: v22-ict-vision
+
+on:
+  pull_request:
+    paths:
+      - "research_bot/vision_ict_v22.py"
+      - "scripts/run_v22_ict_vision_lab.py"
+      - "tests/test_vision_ict_v22.py"
+      - "docs/V22_ICT_VISION_IMPLEMENTATION.md"
+      - ".github/workflows/v22-ict-vision.yml"
+      - "pyproject.toml"
+  workflow_dispatch:
+
+jobs:
+  renderer-label-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e '.[dev,deep]'
+      - name: Deterministic renderer, no-future and model-shape tests
+        run: pytest -q tests/test_vision_ict_v22.py
+
+  public-data-vision-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e '.[dev,deep]'
+      - name: Train causal ICT vision baseline on public 4h crypto history
+        run: |
+          PYTHONPATH=. python scripts/run_v22_ict_vision_lab.py \
+            --output-dir artifacts/v22-ict-vision-smoke \
+            --symbols BTC/USDT,ETH/USDT,SOL/USDT \
+            --timeframe 4h \
+            --bars 2200 \
+            --lookback 64 \
+            --height 64 \
+            --width 96 \
+            --max-samples-per-symbol 220 \
+            --epochs 2 \
+            --models small_cnn,small_vit
+      - name: Upload renderer/label/model evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v22-ict-vision-smoke
+          path: artifacts/v22-ict-vision-smoke/
+          if-no-files-found: warn
+          retention-days: 30

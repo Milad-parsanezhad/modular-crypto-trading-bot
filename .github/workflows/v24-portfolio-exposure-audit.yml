@@ -1,0 +1,67 @@
+name: v24-portfolio-exposure-audit
+
+on:
+  pull_request:
+    paths:
+      - "research_bot/risk_causality_v23.py"
+      - "research_bot/causal_evaluation_v23.py"
+      - "research_bot/portfolio_exposure_v24.py"
+      - "scripts/run_v24_portfolio_exposure_audit.py"
+      - "tests/test_risk_causality_v23.py"
+      - "tests/test_portfolio_exposure_v24.py"
+      - ".github/workflows/v24-portfolio-exposure-audit.yml"
+  push:
+    branches:
+      - "research/v20-global-strategy-risk-lab"
+    paths:
+      - "research_bot/risk_causality_v23.py"
+      - "research_bot/causal_evaluation_v23.py"
+      - "research_bot/portfolio_exposure_v24.py"
+      - "scripts/run_v24_portfolio_exposure_audit.py"
+      - "tests/test_risk_causality_v23.py"
+      - "tests/test_portfolio_exposure_v24.py"
+      - ".github/workflows/v24-portfolio-exposure-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  portfolio-exposure-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install research package
+        run: python -m pip install -e '.[dev]'
+      - name: Lock v0.23 and v0.24 invariants
+        run: >-
+          python -m pytest -q
+          tests/test_risk_causality_v23.py
+          tests/test_portfolio_exposure_v24.py
+      - name: Download frozen v0.20 evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: v20-global-strategy-risk-lab
+          path: frozen-v20
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 34482338133
+      - name: Audit concurrent exposure across all 42 candidates
+        run: >-
+          python scripts/run_v24_portfolio_exposure_audit.py
+          --v20-artifact-dir frozen-v20
+          --output-dir artifacts/v24-portfolio-exposure-audit
+      - name: Print v0.24 exposure decision
+        run: cat artifacts/v24-portfolio-exposure-audit/decision_v24.json
+      - name: Upload v0.24 exposure evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v24-portfolio-exposure-audit
+          path: artifacts/v24-portfolio-exposure-audit
+          retention-days: 30

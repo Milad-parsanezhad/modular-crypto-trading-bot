@@ -1,0 +1,60 @@
+name: v23-causal-frozen-replay
+
+on:
+  pull_request:
+    paths:
+      - "research_bot/risk_causality_v23.py"
+      - "research_bot/causal_evaluation_v23.py"
+      - "scripts/run_v23_causal_replay.py"
+      - "tests/test_risk_causality_v23.py"
+      - ".github/workflows/v23-causal-frozen-replay.yml"
+  push:
+    branches:
+      - "research/v20-global-strategy-risk-lab"
+    paths:
+      - "research_bot/risk_causality_v23.py"
+      - "research_bot/causal_evaluation_v23.py"
+      - "scripts/run_v23_causal_replay.py"
+      - "tests/test_risk_causality_v23.py"
+      - ".github/workflows/v23-causal-frozen-replay.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  frozen-artifact-causal-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install research package
+        run: python -m pip install -e '.[dev]'
+      - name: Lock v0.23 accounting invariants
+        run: python -m pytest -q tests/test_risk_causality_v23.py
+      - name: Download frozen v0.20 evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: v20-global-strategy-risk-lab
+          path: frozen-v20
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 34482338133
+      - name: Replay fixed H4_S6 winner causally
+        run: >-
+          python scripts/run_v23_causal_replay.py
+          --v20-artifact-dir frozen-v20
+          --output-dir artifacts/v23-causal-replay
+      - name: Print forensic comparison
+        run: cat artifacts/v23-causal-replay/comparison_v20_vs_v23.json
+      - name: Upload v0.23 causal replay evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v23-causal-frozen-replay
+          path: artifacts/v23-causal-replay
+          retention-days: 30
