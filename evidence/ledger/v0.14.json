@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.14",
+  "maturity_tier": "FORWARD_PAPER_RUNTIME",
+  "evidence_class": "VERIFIED_CANONICAL",
+  "evaluation_basis": "Assessed for simulated execution, persistence, idempotency and risk controls—not for strategy profitability.",
+  "original_objective": "Operate the unvalidated ICHIMOKU_SHADOW_V14 hypothesis prospectively on public CoinEx BTC/ETH 4h data with PostgreSQL-backed simulated PAPER execution.",
+  "scope": {"frozen_date": "2026-09-09", "venue": "CoinEx public data", "symbols": ["BTC/USDT", "ETH/USDT"], "timeframe": "4h", "strategy": "ICHIMOKU_SHADOW_V14", "deployment": "Railway"},
+  "engineering_result": {"status": "OPERATIONAL_PAPER_RUNTIME", "summary": "Risk gates, cost/depth-aware partial fills, deterministic client IDs, duplicate-bar protection, persistent positions/fills/equity and restart behavior were deployed and smoke-verified."},
+  "scientific_result": {"status": "FORWARD_PAPER_HYPOTHESIS", "summary": "The shadow strategy remained explicitly unvalidated and was not a promoted alpha model."},
+  "economic_result": {"status": "INSUFFICIENT_FORWARD_SAMPLE", "summary": "The subsequent production smoke showed two observations and one simulated fill—operational evidence only."},
+  "provenance": {"run_id": 34360057064, "source_commit": "1ddeaab39f2b66b8b3c1d0f4c5c8f5cbea8a3853", "artifact_id": null, "deployment_id": "a74994ff-b1f0-4cde-b2ec-6316c781a2cd", "strength": "COMMIT_DEPLOYMENT_AND_PRODUCTION_SMOKE"},
+  "safety": {"paper_execution": true, "paper_execution_kind": "SIMULATED", "real_money_orders": false, "live_execution": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["Strategy not validated", "Tiny forward sample", "Simulated fills rather than exchange orders", "No alpha inference", "Historical operational state differs from current PAPER_OFF state"],
+  "contribution_to_next_version": "Supplied the persistent PAPER runtime consumed by v0.15 immutable evidence snapshots.",
+  "classifications": ["ENGINEERING_PASS", "INSUFFICIENT_EVIDENCE", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/V14_FORWARD_PAPER_PROTOCOL.md", "docs/V1_PRODUCTION_SMOKE_RESULTS_2026-09-09.md", "docs/FINAL_SYSTEM_STATUS_V1.md"]
+}

@@ -39,8 +39,15 @@ def validate_record(record: dict, path: Path) -> None:
         if not isinstance(section, dict) or not {"status", "summary"}.issubset(section):
             raise ValueError(f"{path}: malformed {name}")
     safety = record["safety"]
-    if safety.get("paper_execution") is not False or safety.get("live_execution") is not False:
-        raise ValueError(f"{path}: execution safety must remain false")
+    if safety.get("live_execution") is not False:
+        raise ValueError(f"{path}: LIVE execution safety must remain false")
+    if safety.get("paper_execution") is True and (
+        safety.get("paper_execution_kind") != "SIMULATED"
+        or safety.get("real_money_orders") is not False
+    ):
+        raise ValueError(f"{path}: PAPER evidence must be explicitly simulated and non-monetary")
+    if safety.get("paper_execution") not in {True, False}:
+        raise ValueError(f"{path}: paper_execution must be boolean")
 
 
 def validate_ledger() -> list[Path]:

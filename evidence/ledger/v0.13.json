@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.13",
+  "maturity_tier": "PROSPECTIVE_MICROSTRUCTURE_COLLECTION",
+  "evidence_class": "VERIFIED_REPOSITORY_RECORD",
+  "evaluation_basis": "Assessed as a frozen forward-data collector following the spent v0.12 holdout; descriptive collection cannot establish alpha.",
+  "original_objective": "Open a new post-v0.12 BTC/ETH microstructure window with synchronized 1h spot/perpetual basis, taker-flow and conservatively available OI.",
+  "scope": {"frozen_date": "2026-09-09", "window_start": "2026-09-01", "provider": "Binance Vision public archives", "symbols": ["BTCUSDT", "ETHUSDT"], "timeframe": "1h", "schedule": "daily"},
+  "engineering_result": {"status": "PROTOCOL_AND_COLLECTOR_RECORDED", "summary": "Checksum/schema, synchronized basis, separate spot/futures taker-flow and conservative OI availability contracts were defined; liquidation history was explicitly DATA_UNAVAILABLE."},
+  "scientific_result": {"status": "COLLECTION_ONLY", "summary": "Only coverage and diagnostic Spearman correlations were authorized; no model promotion or BUY/SELL decision was permitted."},
+  "economic_result": {"status": "NOT_TESTED", "summary": "No minimum-window alpha evaluation or profitability claim belonged to v0.13."},
+  "provenance": {"run_id": null, "source_commit": null, "artifact_id": null, "strength": "FROZEN_PROTOCOL_WITHOUT_STANDALONE_RESULT_RECORD"},
+  "safety": {"paper_execution": false, "live_execution": false, "real_money_orders": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["No standalone result/run identifier", "Two-symbol cohort", "Kline taker-flow is not L2/L3", "Liquidations unavailable", "Statistical gate deferred"],
+  "contribution_to_next_version": "Created a genuinely new evidence window and prevented retuning of the spent v0.12 holdout.",
+  "classifications": ["ENGINEERING_PARTIAL", "SCIENTIFIC_METHOD_PASS", "INSUFFICIENT_EVIDENCE", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/V13_FORWARD_MICROSTRUCTURE_PROTOCOL.md"]
+}
