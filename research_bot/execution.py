@@ -143,3 +143,9 @@ class PaperExecutionEngine:
             status=status,
             timestamp=request.created_at,
         )
+
+    def release_unsettled(self, client_order_id: str) -> None:
+        """Release a simulated fill only after persistence proves no commit occurred."""
+        if self.policy.mode is ExecutionMode.LIVE:
+            raise RuntimeError("release_unsettled is forbidden in LIVE mode")
+        self._seen_ids.discard(str(client_order_id))
