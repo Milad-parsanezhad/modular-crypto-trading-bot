@@ -2,5 +2,20 @@ artifacts/
 deliverables/
 __pycache__/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 *.pyc
 .venv/
+
+# Local credentials and environment files must never be committed.
+.env
+.env.*
+!.env.example
+
+# Local build/test outputs.
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+.DS_Store
