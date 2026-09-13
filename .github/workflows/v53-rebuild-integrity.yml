@@ -6,12 +6,14 @@ on:
     paths:
       - 'research_bot/candle_time_v53.py'
       - 'research_bot/zone_lifecycle_v53.py'
-      - 'research_bot/multiframe_v53.py'
       - 'research_bot/multitimeframe_v53.py'
+      - 'research_bot/confluence_v53.py'
+      - 'research_bot/forward_multiframe_v53.py'
       - 'research_bot/multiframework_features_v53.py'
       - 'research_bot/ontology_v53.py'
       - 'tests/test_multiframework_features_v53.py'
       - 'tests/test_v53_candle_zone_mtf.py'
+      - 'tests/test_v53_confluence_forward.py'
       - '.github/workflows/v53-rebuild-integrity.yml'
   push:
     branches: ["rebuild/pr64-causal-mtf-v53"]
@@ -37,9 +39,12 @@ jobs:
       - name: Compile rebuilt v0.53 modules
         run: |
           python -m compileall -q research_bot tests
-      - name: Focused causal and lifecycle tests
+      - name: Focused causal, lifecycle and forward tests
         run: |
-          pytest -q tests/test_multiframework_features_v53.py tests/test_v53_candle_zone_mtf.py
+          pytest -q \
+            tests/test_multiframework_features_v53.py \
+            tests/test_v53_candle_zone_mtf.py \
+            tests/test_v53_confluence_forward.py
       - name: Full repository suite
         run: |
           pytest -q
@@ -51,5 +56,7 @@ jobs:
           src = Path('research_bot/multiframework_features_v53.py').read_text()
           assert 'shift(-26)' not in src
           assert 'shift(- 26)' not in src
+          forward = Path('research_bot/forward_multiframe_v53.py').read_text()
+          assert 'PaperExecutionEngine' not in forward
           print('v0.53 safety contract preserved')
           PY
