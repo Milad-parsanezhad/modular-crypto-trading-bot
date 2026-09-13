@@ -3,7 +3,22 @@ name: v17-strategy-lab
 on:
   push:
     branches: [main]
+    paths:
+      - "research_bot/*v17*.py"
+      - "scripts/*v17*.py"
+      - "tests/test_strategy_lab_v17.py"
+      - "tests/test_binance_spot_archive_v17.py"
+      - "tests/test_forward_candidate_v17.py"
+      - ".github/workflows/v17-strategy-lab.yml"
   pull_request:
+    branches: [main]
+    paths:
+      - "research_bot/*v17*.py"
+      - "scripts/*v17*.py"
+      - "tests/test_strategy_lab_v17.py"
+      - "tests/test_binance_spot_archive_v17.py"
+      - "tests/test_forward_candidate_v17.py"
+      - ".github/workflows/v17-strategy-lab.yml"
   workflow_dispatch:
 
 jobs:

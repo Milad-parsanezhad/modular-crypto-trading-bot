@@ -32,6 +32,10 @@ def point_in_time_asof_join(
 
     left = decisions.copy()
     right = features.copy()
+    order_col = "__point_in_time_input_order__"
+    while order_col in left.columns or order_col in right.columns:
+        order_col = f"_{order_col}"
+    left[order_col] = range(len(left))
     left[decision_time_col] = _utc_ns(left[decision_time_col])
     right[available_time_col] = _utc_ns(right[available_time_col])
     left = left.dropna(subset=[decision_time_col])
@@ -54,8 +58,11 @@ def point_in_time_asof_join(
                 rename[col] = f"{feature_prefix}{col}"
         right = right.rename(columns=rename)
 
-    sort_left = by_cols + [decision_time_col]
-    sort_right = by_cols + [available_time_col]
+    # pandas.merge_asof requires the ``on`` key to be globally monotonic even
+    # when ``by`` is supplied. Sorting by group first resets timestamps at each
+    # group boundary and fails for normal interleaved multi-asset panels.
+    sort_left = [decision_time_col] + by_cols
+    sort_right = [available_time_col] + by_cols
     left = left.sort_values(sort_left).reset_index(drop=True)
     right = right.sort_values(sort_right).reset_index(drop=True)
 
@@ -70,7 +77,7 @@ def point_in_time_asof_join(
         allow_exact_matches=True,
         tolerance=tol,
     )
-    return merged
+    return merged.sort_values(order_col).drop(columns=[order_col]).reset_index(drop=True)
 
 
 def assert_no_future_availability(
