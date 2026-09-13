@@ -26,6 +26,8 @@ env:
   V51_CALENDAR_HEAD: 6a8fa49de2d1befa9c17049aa61e13da20a028eb
   V50_RESULT_HEAD: 776f42664f3b01f9deac235fc611c5d84746d74f
   V47_SCIENTIFIC_HEAD: 802b0cde38549617589b6a4a313949361dd9425c
+  V51_PREREG_EPOCH: "1789274968"
+  V51_CALENDAR_EPOCH: "1789275171"
 
 jobs:
   readiness:
@@ -46,8 +48,9 @@ jobs:
           git merge-base --is-ancestor "$V50_RESULT_HEAD" HEAD
           git merge-base --is-ancestor "$V51_PREREG_HEAD" HEAD
           git merge-base --is-ancestor "$V51_CALENDAR_HEAD" HEAD
-          test "$(git show -s --format=%cI "$V51_PREREG_HEAD")" = "2026-09-13T04:49:28+00:00"
-          test "$(git show -s --format=%cI "$V51_CALENDAR_HEAD")" = "2026-09-13T04:52:51+00:00"
+          # Compare immutable instants numerically, independent of ISO timezone formatting.
+          test "$(git show -s --format=%ct "$V51_PREREG_HEAD")" = "$V51_PREREG_EPOCH"
+          test "$(git show -s --format=%ct "$V51_CALENDAR_HEAD")" = "$V51_CALENDAR_EPOCH"
           # No post-freeze edit to the frozen policy/calendar files is permitted.
           git diff --exit-code "$V51_CALENDAR_HEAD" -- \
             docs/V51_OVERLAP_CONFLICT_ARBITRATION_PREREGISTRATION.md \
