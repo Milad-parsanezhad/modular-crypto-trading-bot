@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.17",
+  "maturity_tier": "ICHIMOKU_STRATEGY_LAB_AND_SEARCH_AUDIT",
+  "evidence_class": "VERIFIED_REPOSITORY_RECORD",
+  "evaluation_basis": "Assessed for frozen train/validation/final-test execution and honest search-aware interpretation; candidate selection prevents treating final point estimates as confirmed alpha.",
+  "original_objective": "Compare causal Ichimoku/rule candidates and IRGC-S meta-labeling on BTC/ETH 4h archives with 2025 as untouched final test.",
+  "scope": {"date": "2026-09-09", "symbols": ["BTC/USDT", "ETH/USDT"], "timeframe": "4h", "bars_per_asset": 13151, "coverage": "2020-01-01 to 2025-12-31", "development": "2020-2023", "validation": "2024", "final_test": "2025", "round_trip_cost_bps": 24},
+  "engineering_result": {"status": "PASS_FOR_STAGE", "summary": "Causal next-open rules, no displaced-future Ichimoku features, explicit costs, risk caps, drawdown firewall and committed result tables were produced."},
+  "scientific_result": {"status": "S6_FORWARD_PAPER_ONLY_IRGC_S_REJECTED", "summary": "S6 advanced only as a forward-observation hypothesis because it emerged from candidate search; IRGC-S had only one positive OOS fold and was rejected."},
+  "economic_result": {"status": "POSITIVE_S6_UNCONFIRMED_NEGATIVE_IRGC_S", "summary": "S6 final test: BTC +3.53%, Sharpe 0.831, MDD -3.42%; ETH +5.06%, Sharpe 1.207, MDD -3.24%. IRGC-S: -0.46%, PF 0.943, MDD -3.59%."},
+  "provenance": {"run_id": 34404332357, "source_commit": null, "artifact_id": null, "strength": "RESULT_DOCUMENT_AND_RETRIEVED_WORKFLOW_ID"},
+  "safety": {"paper_execution": false, "live_execution": false, "real_money_orders": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["S6 selected after candidate search", "Multiple-testing/PBO correction still required", "Two assets", "IRGC-S only 49 selected events", "Forward replication absent"],
+  "contribution_to_next_version": "Separated an attractive S6 point result from confirmation and motivated cost-aware/external replication tests.",
+  "classifications": ["ENGINEERING_PASS", "SCIENTIFIC_METHOD_PASS", "HYPOTHESIS_REJECTED", "INSUFFICIENT_EVIDENCE", "DIAGNOSTIC_SUCCESS", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/V17_ICHIMOKU_STRATEGY_LAB_RESULTS_2026-09-09.md", "docs/V17_SEARCH_AWARE_STATISTICAL_AUDIT.md"]
+}
