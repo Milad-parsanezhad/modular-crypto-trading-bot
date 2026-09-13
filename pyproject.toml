@@ -20,6 +20,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "httpx>=0.27,<1"]
+deep = ["torch>=2.14,<2.15"]
+mamba = ["torch>=2.14,<2.15", "mamba-ssm==2.3.2.post1"]
 
 [tool.setuptools.packages.find]
 include = ["research_bot*"]
