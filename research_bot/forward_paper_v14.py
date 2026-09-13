@@ -16,6 +16,7 @@ from .execution_hardening_v52 import (
     StaleMarketDataError,
     commit_fill_atomic,
     executable_reference_price,
+    settlement_exists,
     validate_executable_quote,
 )
 from .ichimoku_advanced import detect_kumo_triangle_breakout
@@ -286,18 +287,19 @@ class ForwardPaperRunner:
             },
             "reasons": list(signal.reasons),
         }
-        if not self.store.record_observation(observation):
-            return {
-                "symbol": symbol,
-                "status": "ALREADY_OBSERVED_BAR",
-                "bar_timestamp": bar_ts.isoformat(),
-                "action": signal.action,
-            }
+        observation_inserted = self.store.record_observation(observation)
 
         mark_price = float(depth.mid)
         account, gross_exposure = self._mark_account(symbol, mark_price)
         actionable = signal.action in {"BUY_CANDIDATE", "EXIT"}
         if not actionable or not self.paper_execution_enabled:
+            if not observation_inserted:
+                return {
+                    "symbol": symbol,
+                    "status": "ALREADY_OBSERVED_BAR",
+                    "bar_timestamp": bar_ts.isoformat(),
+                    "action": signal.action,
+                }
             self.store.record_equity(
                 {
                     "timestamp": now.isoformat(),
@@ -320,6 +322,18 @@ class ForwardPaperRunner:
             }
 
         side = OrderSide.BUY if signal.action == "BUY_CANDIDATE" else OrderSide.SELL
+        client_order_id = (
+            f"{STRATEGY_VERSION}:{symbol.replace('/','')}:"
+            f"{int(pd.Timestamp(bar_ts).timestamp())}:{side.value}"
+        )
+        if settlement_exists(self.store, client_order_id):
+            return {
+                "symbol": symbol,
+                "status": "ALREADY_SETTLED_ORDER",
+                "client_order_id": client_order_id,
+                "recovered_from_duplicate_observation": not observation_inserted,
+            }
+
         execution_reference = executable_reference_price(depth, side)
 
         if signal.action == "BUY_CANDIDATE":
@@ -372,17 +386,17 @@ class ForwardPaperRunner:
                     "equity": account.equity,
                     "cash": account.cash,
                     "gross_exposure": gross_exposure,
-                    "metadata": {"symbol": symbol, "risk_rejected": list(risk.reasons)},
+                    "metadata": {
+                        "symbol": symbol,
+                        "risk_rejected": list(risk.reasons),
+                        "recovery_attempt": not observation_inserted,
+                    },
                 }
             )
             return {"symbol": symbol, "status": "RISK_REJECTED", "signal": asdict(signal), "risk": asdict(risk)}
 
         visible_qty = depth.ask_depth if side is OrderSide.BUY else depth.bid_depth
         fill_fraction = float(min(1.0, max(0.05, visible_qty / quantity))) if quantity > 0 else 0.0
-        client_order_id = (
-            f"{STRATEGY_VERSION}:{symbol.replace('/','')}:"
-            f"{int(pd.Timestamp(bar_ts).timestamp())}:{side.value}"
-        )
         fill = self.execution.execute(
             ExecutionRequest(
                 client_order_id=client_order_id,
@@ -407,6 +421,7 @@ class ForwardPaperRunner:
             "quote_timestamp": depth.timestamp.isoformat(),
             "quote_age_seconds": quote_age_seconds,
             "signal_age_minutes": signal_age_minutes,
+            "recovery_attempt": not observation_inserted,
         }
         try:
             commit_fill_atomic(
@@ -445,6 +460,7 @@ class ForwardPaperRunner:
                 "timestamp": fill.timestamp.isoformat(),
             },
             "account": asdict(account),
+            "recovery_attempt": not observation_inserted,
         }
 
     def run_cycle(self, now: datetime | None = None) -> dict:
