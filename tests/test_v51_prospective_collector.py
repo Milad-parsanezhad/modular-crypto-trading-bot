@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from scripts.collect_v51_prospective_ohlcv import (
+from research_bot.prospective_collector_v51 import (
     ALLOWED_ASSETS_V51,
     ALLOWED_VENUES_V51,
     CALENDAR_COMMIT_V51,
