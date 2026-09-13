@@ -6,9 +6,11 @@ on:
       - 'research_bot/risk_calibration_v52.py'
       - 'research_bot/sequence_benchmark_v52.py'
       - 'research_bot/deep_models_v52.py'
+      - 'research_bot/training_v52.py'
       - 'tests/test_risk_calibration_v52.py'
       - 'tests/test_sequence_benchmark_v52.py'
       - 'scripts/run_v52_benchmark.py'
+      - 'scripts/run_v52_deep_benchmark.py'
       - 'docs/V52_RISK_CALIBRATED_SEQUENCE_RESEARCH_PLAN.md'
       - 'pyproject.toml'
       - '.github/workflows/v52-research-integrity.yml'
@@ -19,9 +21,11 @@ on:
       - 'research_bot/risk_calibration_v52.py'
       - 'research_bot/sequence_benchmark_v52.py'
       - 'research_bot/deep_models_v52.py'
+      - 'research_bot/training_v52.py'
       - 'tests/test_risk_calibration_v52.py'
       - 'tests/test_sequence_benchmark_v52.py'
       - 'scripts/run_v52_benchmark.py'
+      - 'scripts/run_v52_deep_benchmark.py'
       - 'pyproject.toml'
       - '.github/workflows/v52-research-integrity.yml'
 
@@ -41,11 +45,11 @@ jobs:
       - name: Install core research dependencies
         run: python -m pip install -e '.[dev]'
       - name: Compile v0.52 modules
-        run: python -m compileall -q research_bot scripts/run_v52_benchmark.py tests
+        run: python -m compileall -q research_bot scripts/run_v52_benchmark.py scripts/run_v52_deep_benchmark.py tests
       - name: Run focused v0.52 tests
         run: python -m pytest -q tests/test_risk_calibration_v52.py tests/test_sequence_benchmark_v52.py
-      - name: Confirm deep module imports without optional backend
-        run: python -c "import research_bot.deep_models_v52 as m; print('torch_available=', m.torch is not None)"
+      - name: Confirm optional deep modules import without backend substitution
+        run: python -c "import research_bot.deep_models_v52 as m; import research_bot.training_v52; print('torch_available=', m.torch is not None)"
       - name: Safety contract
         run: |
           ! grep -R -nE 'LIVE_EXECUTION *= *[Tt]rue|PAPER_EXECUTION *= *[Tt]rue' research_bot scripts tests docs/V52_RISK_CALIBRATED_SEQUENCE_RESEARCH_PLAN.md
