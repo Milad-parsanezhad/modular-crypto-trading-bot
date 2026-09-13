@@ -14,6 +14,7 @@ from research_bot.candle_time_v53 import CandleTimeContractV53, closed_bar_snaps
 from research_bot.coinex_public import fetch_coinex_klines
 from research_bot.feature_audit_v54 import V54AuditConfig, audit_feature_families_v54
 from research_bot.multitimeframe_v53 import build_multitimeframe_feature_frame_v53
+from research_bot.v54_completion import assess_v54_completion
 from research_bot.v54_integrity import dataset_manifest_v54
 from research_bot.v54_promotion import V54PromotionPolicy, summarize_family_evidence_v54
 
@@ -69,7 +70,13 @@ def write_frozen_input(frame: pd.DataFrame, symbol: str, directory: Path) -> dic
     csv_path = directory / f"{slug}.csv.gz"
     manifest_path = directory / f"{slug}.manifest.json"
     frame.to_csv(csv_path, index=False, compression="gzip", float_format="%.12g")
-    manifest = dataset_manifest_v54(frame, symbol=symbol)
+    # Re-read the exact persisted bytes before manifesting so replay validates the
+    # serialized snapshot rather than an in-memory representation with different
+    # dtype/float formatting.
+    persisted = pd.read_csv(csv_path)
+    for col in [c for c in persisted.columns if c == "timestamp" or c == "decision_at" or c.endswith("_at")]:
+        persisted[col] = pd.to_datetime(persisted[col], utc=True, errors="coerce")
+    manifest = dataset_manifest_v54(persisted, symbol=symbol)
     manifest["snapshot_file"] = csv_path.name
     manifest_path.write_text(json.dumps(_json_safe(manifest), indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
     return manifest
@@ -122,15 +129,13 @@ def run_universe(
 
     policy = V54PromotionPolicy()
     evidence = summarize_family_evidence_v54(per_symbol, policy)
-    completed = sorted(per_symbol)
-    status = "V54_EMPIRICAL_AUDIT_COMPLETE" if len(completed) >= policy.min_completed_symbols else "V54_INCOMPLETE_COVERAGE"
-    return {
+    report = {
         "experiment": "V54_REAL_COINEX_FEATURE_AUDIT",
-        "status": status,
+        "status": "V54_EMPIRICAL_INCOMPLETE",
         "generated_at": pd.Timestamp(now).isoformat(),
         "source_commit": _source_commit(),
         "symbols_requested": list(symbols),
-        "symbols_completed": completed,
+        "symbols_completed": sorted(per_symbol),
         "blocked": blocked,
         "dataset_manifests": manifests,
         "per_symbol": per_symbol,
@@ -140,6 +145,10 @@ def run_universe(
         "paper_execution": False,
         "live_execution": False,
     }
+    completion = assess_v54_completion(report)
+    report["completion"] = completion
+    report["status"] = completion["empirical_status"]
+    return report
 
 
 def main() -> None:
