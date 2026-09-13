@@ -16,6 +16,7 @@ on:
       - "tests/test_v51_prospective_collector.py"
       - "docs/V51_OVERLAP_CONFLICT_ARBITRATION_PREREGISTRATION.md"
       - "docs/V51_PREDICTOR_IDENTITY_AMENDMENT_2026-09-13.md"
+      - "docs/V51_PROSPECTIVE_EVIDENCE_INTEGRITY_ADDENDUM_2026-09-13.md"
       - "docs/V51_OVERLAP_ARBITRATION_RESEARCH_2026-09-13.md"
       - ".github/workflows/v51-overlap-arbitration-readiness.yml"
   workflow_dispatch:
@@ -31,11 +32,13 @@ env:
   V51_PREREG_HEAD: d8ee4576aaf55750dd5910cc0d3b2efcbba3f5b2
   V51_CALENDAR_HEAD: 6a8fa49de2d1befa9c17049aa61e13da20a028eb
   V51_IDENTITY_AMENDMENT_HEAD: 4838c0d98c408d358929b0767676a5ac024bd8dd
+  V51_EVIDENCE_ADDENDUM_HEAD: da5dcf5cd3568a92c75871016f000917c9380955
   V50_RESULT_HEAD: 776f42664f3b01f9deac235fc611c5d84746d74f
   V47_SCIENTIFIC_HEAD: 802b0cde38549617589b6a4a313949361dd9425c
   V51_PREREG_EPOCH: "1789274968"
   V51_CALENDAR_EPOCH: "1789275171"
   V51_IDENTITY_AMENDMENT_EPOCH: "1789287923"
+  V51_EVIDENCE_ADDENDUM_EPOCH: "1789294461"
   V51_REPAIRED_START_EPOCH: "1789300800"
 
 jobs:
@@ -58,17 +61,21 @@ jobs:
           git merge-base --is-ancestor "$V51_PREREG_HEAD" HEAD
           git merge-base --is-ancestor "$V51_CALENDAR_HEAD" HEAD
           git merge-base --is-ancestor "$V51_IDENTITY_AMENDMENT_HEAD" HEAD
+          git merge-base --is-ancestor "$V51_EVIDENCE_ADDENDUM_HEAD" HEAD
           test "$(git show -s --format=%ct "$V51_PREREG_HEAD")" = "$V51_PREREG_EPOCH"
           test "$(git show -s --format=%ct "$V51_CALENDAR_HEAD")" = "$V51_CALENDAR_EPOCH"
           test "$(git show -s --format=%ct "$V51_IDENTITY_AMENDMENT_HEAD")" = "$V51_IDENTITY_AMENDMENT_EPOCH"
+          test "$(git show -s --format=%ct "$V51_EVIDENCE_ADDENDUM_HEAD")" = "$V51_EVIDENCE_ADDENDUM_EPOCH"
           test "$V51_IDENTITY_AMENDMENT_EPOCH" -lt "$V51_REPAIRED_START_EPOCH"
+          test "$V51_EVIDENCE_ADDENDUM_EPOCH" -lt "$V51_REPAIRED_START_EPOCH"
           test ! -e docs/V51_RESULTS_2026-09-13.md
-          # Original preregistration text itself remains immutable.
           test "$(git rev-parse HEAD:docs/V51_OVERLAP_CONFLICT_ARBITRATION_PREREGISTRATION.md)" = \
                "$(git rev-parse "$V51_CALENDAR_HEAD":docs/V51_OVERLAP_CONFLICT_ARBITRATION_PREREGISTRATION.md)"
           grep -q 'V51_PRODUCTION_PREDICTOR = V47_C1_LATEST_CANONICAL_FOLD_PER_ASSET' \
             docs/V51_PREDICTOR_IDENTITY_AMENDMENT_2026-09-13.md
           grep -q '2026-09-13T12:00:00Z' docs/V51_PREDICTOR_IDENTITY_AMENDMENT_2026-09-13.md
+          grep -q 'first_seen_at <= bar_close_time + 60 minutes' \
+            docs/V51_PROSPECTIVE_EVIDENCE_INTEGRITY_ADDENDUM_2026-09-13.md
 
       - name: Verify inherited v0.47 scientific pipeline unchanged
         shell: bash
@@ -116,7 +123,7 @@ jobs:
             tests/test_probability_calibration_v47.py \
             tests/test_economic_state_v46.py
 
-      - name: Verify research-only safety and clock contract
+      - name: Verify research-only safety and evidence contract
         run: |
           python - <<'PY'
           import pandas as pd
@@ -128,6 +135,8 @@ jobs:
           from research_bot.predictor_identity_v51 import V51_REPAIRED_PROSPECTIVE_START
           from research_bot.prospective_collector_v51 import (
               ALLOWED_VENUES_V51 as COLLECTOR_VENUES,
+              EVIDENCE_INTEGRITY_ADDENDUM_COMMIT_V51,
+              MAX_CAPTURE_LAG_MINUTES_V51,
               PREDICTOR_IDENTITY_AMENDMENT_COMMIT_V51,
               PREDICTOR_IDENTITY_POLICY_V51,
               PROSPECTIVE_START_V51 as COLLECTOR_START,
@@ -137,13 +146,17 @@ jobs:
           assert tuple(COLLECTOR_VENUES) == ("coinex", "okx", "kucoin")
           assert "kraken" not in ALLOWED_VENUES_V51
           assert PREDICTOR_IDENTITY_AMENDMENT_COMMIT_V51 == "4838c0d98c408d358929b0767676a5ac024bd8dd"
+          assert EVIDENCE_INTEGRITY_ADDENDUM_COMMIT_V51 == "da5dcf5cd3568a92c75871016f000917c9380955"
           assert PREDICTOR_IDENTITY_POLICY_V51 == "V47_C1_LATEST_CANONICAL_FOLD_PER_ASSET"
+          assert MAX_CAPTURE_LAG_MINUTES_V51 == 60.0
           assert PROSPECTIVE_START_V51 == pd.Timestamp(V51_REPAIRED_PROSPECTIVE_START)
           assert PROSPECTIVE_START_V51 == COLLECTOR_START == pd.Timestamp("2026-09-13T12:00:00Z")
           print({
               "policy": ARBITRATION_POLICY_V51,
               "prospective_start": str(PROSPECTIVE_START_V51),
               "identity_amendment_commit": PREDICTOR_IDENTITY_AMENDMENT_COMMIT_V51,
+              "evidence_addendum_commit": EVIDENCE_INTEGRITY_ADDENDUM_COMMIT_V51,
+              "max_capture_lag_minutes": MAX_CAPTURE_LAG_MINUTES_V51,
               "kraken_touched": False,
               "paper_execution": False,
               "live_execution": False,
