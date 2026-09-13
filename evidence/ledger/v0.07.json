@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.7",
+  "maturity_tier": "REAL_DATA_MULTI_CONFIGURATION_REPLICATION",
+  "evidence_class": "RETROSPECTIVE_RECONSTRUCTION",
+  "evaluation_basis": "Assessed as a constrained real-data replication across configurations; missing repository provenance is explicitly downgraded.",
+  "original_objective": "Evaluate the cross-sectional/feature design on deep CoinEx BTC/USDT 4h history across multiple folds, seeds, horizons and cost stresses.",
+  "scope": {"venue": ["CoinEx"], "symbols": ["BTC/USDT"], "timeframe": "4h", "coverage": "2023-09-07 to 2026-09-06", "aligned_rows": 6573, "post_warmup_rows": 6513, "configurations": 24},
+  "engineering_result": {"status": "PASS_FOR_RECONSTRUCTED_STAGE", "summary": "A real-data, multi-configuration experiment with stress costs and bootstrap uncertainty was recorded; historical OI/order-flow inputs were unavailable."},
+  "scientific_result": {"status": "ALL_CONFIGURATIONS_REJECTED", "summary": "All 24 configurations failed promotion; the best point estimate had uncertainty spanning zero."},
+  "economic_result": {"status": "NEGATIVE_OR_INCONCLUSIVE", "summary": "Best mean-Sharpe arm, 24h ridge logistic plus basis/funding, returned -2.71%, Sharpe 0.222 and -8.44% at 15 bps stress; bootstrap CI [-0.001537, 0.001214]."},
+  "provenance": {"run_id": null, "source_commit": null, "artifact_id": null, "strength": "RETRIEVED_RESULT_FILE_WITHOUT_REPOSITORY_IDENTIFIERS"},
+  "safety": {"paper_execution": false, "live_execution": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["Run/commit/artifact identifiers unavailable", "Single asset", "Historical OI/order-flow unavailable", "Bootstrap interval crossed zero"],
+  "contribution_to_next_version": "Reinforced rejection discipline and motivated a unified evidence/risk/execution contract before further model tournaments.",
+  "classifications": ["SCIENTIFIC_METHOD_PASS", "HYPOTHESIS_REJECTED", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["External retrieved record: REAL_V07_RESULTS.md"]
+}

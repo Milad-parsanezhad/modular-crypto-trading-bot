@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.11",
+  "maturity_tier": "ROBUSTNESS_AND_STATISTICAL_INFERENCE",
+  "evidence_class": "VERIFIED_CANONICAL",
+  "evaluation_basis": "Assessed for multi-seed stability, paired moving-block inference, FDR, universe quality and regime robustness.",
+  "original_objective": "Stress v0.10 learned models and baselines with multiple seeds, bootstrap/FDR and regime diagnostics before any promotion.",
+  "scope": {"date": "2026-09-09", "discovered_listings": 15847, "unique_assets": 3812, "eligible_assets": 15, "seeds": [11, 42, 101], "bootstrap_resamples": 300, "block_bars": 12, "one_way_cost_bps": 12},
+  "engineering_result": {"status": "PASS_WITH_CORRECTED_UNIVERSE_DEFECT", "summary": "The final run excluded stablecoin bases after an earlier USDG eligibility defect and completed all deterministic, discovery, robustness and artifact checks."},
+  "scientific_result": {"status": "NO_MODEL_PROMOTED", "summary": "Learned challengers were materially inferior to Ichimoku; no FDR-significant learned edge or sufficient regime stability existed."},
+  "economic_result": {"status": "BASELINE_POSITIVE_BUT_UNSTABLE", "summary": "Ichimoku median +39.69%, Sharpe 1.752, MDD -34.54%; Logistic -27.28%, Sharpe -1.090. Logistic-minus-Ichimoku mean CI was entirely below zero."},
+  "provenance": {"run_id": 34309928748, "source_commit": "a6e3afbdcc319071597ddef8a676dc51d02846a6", "artifact_id": null, "strength": "COMMIT_WORKFLOW_AND_RESULT_DOCUMENT"},
+  "safety": {"paper_execution": false, "live_execution": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["Ichimoku MDD -34.54%", "Performance concentrated in HIGH_VOL and TREND_DOWN", "Regime gate would be post-hoc on this sample", "Only three seeds", "No external holdout in this stage"],
+  "contribution_to_next_version": "Froze the regime hypothesis and required v0.12 external derivatives/Ichimoku feature-family validation on an untouched domain.",
+  "classifications": ["ENGINEERING_PASS", "SCIENTIFIC_METHOD_PASS", "HYPOTHESIS_REJECTED", "DIAGNOSTIC_SUCCESS", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/V11_ROBUSTNESS_RESULTS_2026-09-09.md", "docs/V11_ROBUSTNESS_PROTOCOL.md"]
+}

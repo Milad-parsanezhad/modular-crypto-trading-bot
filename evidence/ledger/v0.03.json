@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.3",
+  "maturity_tier": "DATA_AND_ALPHA_INFRASTRUCTURE",
+  "evidence_class": "VERIFIED_CANONICAL",
+  "evaluation_basis": "Assessed as a data-engineering and source-semantics stage; it was not designed to establish tradable alpha.",
+  "original_objective": "Break the 1000-bar ceiling and build auditable futures, funding, basis, OI and taker-side order-flow ingestion.",
+  "scope": {"date": "2026-09-06", "venue": ["CoinEx"], "symbols": ["BTC/USDT"], "timeframe": "4h", "spot_rows": 6573, "futures_rows": 12291, "funding_rows": 6144, "aligned_spot_futures_rows": 6573},
+  "engineering_result": {"status": "PASS_FOR_STAGE", "summary": "Gap-free CoinEx spot/futures histories, long funding history, computed basis, current OI and recent taker-side order flow were acquired with retry/audit behavior."},
+  "scientific_result": {"status": "DATA_FEASIBILITY_SUPPORTED", "summary": "Funding and same-venue basis became usable research inputs; the CoinEx basis-history endpoint was rejected as uninformative and historical OI/order flow remained unavailable through recent REST endpoints."},
+  "economic_result": {"status": "NOT_TESTED", "summary": "No alpha or profitability claim was part of v0.3."},
+  "provenance": {"run_id": 34049950143, "source_commit": "0ba5f071906be726f2143ad8c344e4fd930e89c5", "artifact_id": null, "strength": "COMMIT_AND_WORKFLOW_RUN"},
+  "safety": {"paper_execution": false, "live_execution": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["Spot API history began in 2023-09 at 4h", "Historical CoinEx OI absent", "Recent-deals order flow lacked historical depth", "Binance/Bybit REST access restrictions recorded", "No alpha evaluation"],
+  "contribution_to_next_version": "Enabled v0.4 point-in-time archive backfills and isolated feature-family ablations.",
+  "classifications": ["ENGINEERING_PASS", "DIAGNOSTIC_SUCCESS", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/RESULTS_V03_DEEP_2026-09-06.md", "docs/DATA_SOURCES_V03.md"]
+}

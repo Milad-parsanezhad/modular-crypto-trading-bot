@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.15",
+  "maturity_tier": "IMMUTABLE_SCHEDULED_FORWARD_EVIDENCE",
+  "evidence_class": "VERIFIED_CANONICAL",
+  "evaluation_basis": "Assessed for independent production evidence export and prespecified sample sufficiency, not for return significance.",
+  "original_objective": "Read the Railway PAPER service, validate its safety contract and create immutable scheduled evidence artifacts every four hours.",
+  "scope": {"date": "2026-09-09", "observations": 2, "simulated_fills": 1, "equity_points": 2, "minimum_hours": 168, "minimum_observations": 100, "minimum_fills": 10},
+  "engineering_result": {"status": "PASS_FOR_STAGE", "summary": "Production export, evidence validation and the three-file GitHub Actions artifact completed; deterministic tests were 3/3."},
+  "scientific_result": {"status": "INSUFFICIENT_FORWARD_SAMPLE", "summary": "The snapshot was far below every preregistered minimum; no risk-ratio, alpha or live-readiness conclusion was authorized."},
+  "economic_result": {"status": "DESCRIPTIVE_ONLY", "summary": "Cumulative simulated PAPER return and drawdown were approximately -0.0261%; this single-fill value has no inferential meaning."},
+  "provenance": {"run_id": 34361196453, "source_commit": null, "artifact_id": 10107909348, "artifact_name": "v15-forward-evidence-2", "artifact_digest": "sha256:8008fc3eea1bf621347754755c91cfe8c56832ba7003e79f7107ca35fba7ea25", "strength": "WORKFLOW_AND_HASHED_ARTIFACT"},
+  "safety": {"paper_execution": true, "paper_execution_kind": "SIMULATED", "real_money_orders": false, "live_execution": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["Only two observations", "Only one simulated fill", "Less than 168 hours", "No Sharpe/alpha inference", "Scheduled collector later retired when PAPER was disabled"],
+  "contribution_to_next_version": "Created immutable forward snapshots for v0.16 independence filtering and formal defense aggregation.",
+  "classifications": ["ENGINEERING_PASS", "SCIENTIFIC_METHOD_PASS", "INSUFFICIENT_EVIDENCE", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/V15_FORWARD_EVIDENCE_INITIAL_RESULTS_2026-09-09.md", "docs/V15_FORWARD_EVIDENCE_PROTOCOL.md"]
+}

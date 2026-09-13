@@ -30,7 +30,10 @@ def test_sequence_builder_never_uses_future_in_input():
     changed = df.copy(); changed.loc[600:, "close"] *= 7; changed.loc[600:, "high"] *= 7; changed.loc[600:, "low"] *= 7; changed.loc[600:, "open"] *= 7
     b = build_sequences(changed, cfg)
     Xa, _, _, ta, _ = a; Xb, _, _, tb, _ = b
-    common = min(np.searchsorted(ta.astype("int64"), pd.Timestamp(df.timestamp.iloc[599]).value, side="left"), np.searchsorted(tb.astype("int64"), pd.Timestamp(df.timestamp.iloc[599]).value, side="left"))
+    # Compare timestamps directly. Pandas 3 can preserve microsecond resolution
+    # in DatetimeIndex.astype("int64"), while Timestamp.value is nanoseconds.
+    cutoff = pd.Timestamp(df.timestamp.iloc[599])
+    common = min(int((ta < cutoff).sum()), int((tb < cutoff).sum()))
     assert common > 50
     assert np.allclose(Xa[:common], Xb[:common], equal_nan=True)
 

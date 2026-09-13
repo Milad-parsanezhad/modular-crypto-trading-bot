@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.5",
+  "maturity_tier": "REGIME_CONDITIONAL_ROBUSTNESS",
+  "evidence_class": "VERIFIED_CANONICAL",
+  "evaluation_basis": "Assessed for prespecified regime/horizon inference, calibrated selection and robustness diagnostics; a local discovery could not substitute for global replication.",
+  "original_objective": "Test Funding/Basis/Order Flow/OI across fixed regimes and 4h/12h/24h horizons with calibration, bootstrap/BH, CPCV, PBO and DSR diagnostics.",
+  "scope": {"date": "2026-09-06", "primary_venue": "CoinEx", "cross_venue_source": "Binance Vision", "symbols": ["BTC/USDT"], "timeframe": "4h", "regimes": ["bull", "bear", "sideways", "high-vol", "crisis"], "horizons": ["4h", "12h", "24h"]},
+  "engineering_result": {"status": "PASS_FOR_STAGE", "summary": "Point-in-time regimes, nested calibration/threshold selection, non-overlapping horizons, coverage matching and CPCV/PBO/DSR panels executed."},
+  "scientific_result": {"status": "DISCOVERY_ONLY_NO_PROMOTION", "summary": "No pooled or long-history family was validated. The recent-panel 4h OI-Bear subset passed a local gate but short history and pooled PBO/DSR weakness required independent confirmation."},
+  "economic_result": {"status": "POOLED_NEGATIVE_LOCAL_DISCOVERY", "summary": "All pooled variants lost after costs. OI in 219 Bear observations produced 32 trades, +2.97%, Sharpe 1.634 and MDD -4.46% versus matched baseline -13.90%, but was not promoted."},
+  "provenance": {"run_id": 34053834027, "source_commit": "642c7d211c07237cac157976ca5f4cdeda2bce62", "artifact_id": null, "strength": "COMMIT_AND_WORKFLOW_RUN"},
+  "safety": {"paper_execution": false, "live_execution": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["OI panel about one year", "Conditional subset selection required independent confirmation", "Pooled OI return -40.86% and PBO 0.80", "Single-BTC funding formulation", "No live authorization"],
+  "contribution_to_next_version": "Defined v0.6 cross-sectional 8h funding research and independent OI-Bear confirmation instead of overfitting the local subset.",
+  "classifications": ["ENGINEERING_PASS", "SCIENTIFIC_METHOD_PASS", "DIAGNOSTIC_SUCCESS", "INSUFFICIENT_EVIDENCE", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["results/V05_RESULTS_2026-09-06.md", "docs/V05_RESEARCH_BASIS.md"]
+}

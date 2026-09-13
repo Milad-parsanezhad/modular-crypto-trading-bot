@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project_version": "v0.1",
+  "maturity_tier": "EXPLORATORY_BASELINE",
+  "evidence_class": "VERIFIED_REPOSITORY_RECORD",
+  "evaluation_basis": "Assessed against its original goal: establish a real-market baseline and reject unjustified ML complexity; modern robustness gaps are limitations, not retroactive failure criteria.",
+  "original_objective": "Run the first real CoinEx BTC/USDT 4h ML baseline against Buy & Hold and 24-bar momentum.",
+  "scope": {"date": "2026-09-06", "venue": ["CoinEx"], "symbols": ["BTC/USDT"], "timeframe": "4h", "raw_bars": 1000, "train_rows": 699, "test_rows": 300},
+  "engineering_result": {"status": "PASS_FOR_STAGE", "summary": "Real public-market data, chronological holdout, friction assumptions and three executable baselines were produced."},
+  "scientific_result": {"status": "BASELINE_HYPOTHESIS_REJECTED", "summary": "OHLCV-derived HistGradientBoosting plus P(up)>0.56 abstention did not demonstrate incremental value."},
+  "economic_result": {"status": "NEGATIVE", "summary": "ML return -3.91%, Sharpe -3.48 and MDD -4.31%; momentum returned +11.46% and Buy & Hold +23.45% in the same short holdout."},
+  "provenance": {"run_id": null, "source_commit": null, "artifact_id": null, "strength": "RESULT_DOCUMENT_ONLY"},
+  "safety": {"paper_execution": false, "live_execution": false, "kraken_state": "NOT_IN_SCOPE"},
+  "limitations": ["Only 1000 bars", "Single chronological split", "No purging/CPCV/PBO/DSR", "No funding, on-chain or order-flow data", "Simplified slippage and no market impact"],
+  "contribution_to_next_version": "Established mandatory simple baselines and motivated v0.2 event sampling, purging and stronger labels.",
+  "classifications": ["ENGINEERING_PASS", "HYPOTHESIS_REJECTED", "HISTORICAL_PROTOTYPE", "SUPERSEDED_WITH_VALUE"],
+  "source_documents": ["docs/BASELINE_RESULTS_V0_1.md"]
+}
