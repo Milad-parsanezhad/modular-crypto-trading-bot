@@ -13,9 +13,9 @@ from .zone_lifecycle_v53 import add_zone_lifecycle_v53
 def add_ichimoku_visibility_v53(frame: pd.DataFrame) -> pd.DataFrame:
     """Separate cloud visible now from the cloud projected 26 bars forward.
 
-    ``ichi_span_*_now`` are values computable at bar t and conventionally plotted
-    26 periods ahead. The cloud *visible at t* is therefore the pair computed at
-    t-26. Keeping both representations prevents accidental future alignment.
+    ``ichi_span_*_now`` are values computable only when bar t closes and are
+    conventionally plotted 26 periods ahead. The cloud visible at decision t is
+    therefore sourced from t-26. No future shift is used.
     """
 
     required = {"close", "ichi_span_a_now", "ichi_span_b_now"}
@@ -67,11 +67,13 @@ def build_multitimeframe_feature_frame_v53(
     decision_timeframe: str,
     publication_lags: Mapping[str, pd.Timedelta] | None = None,
 ) -> pd.DataFrame:
-    """Build a point-in-time multi-timeframe research frame.
+    """Build a point-in-time multi-timeframe decision frame.
 
-    Every timeframe is independently feature-engineered and receives its own
-    ``available_at``. Higher-timeframe features are backward-asof joined to the
-    decision timeframe only after the higher bar is closed and available.
+    Raw ``timestamp`` remains the bar-open timestamp for provenance. Features of
+    the decision bar become legal only at its ``available_at``. Therefore the
+    canonical decision clock is ``decision_at`` and *all* higher-timeframe joins
+    are performed against that clock. This avoids using a just-closed bar at its
+    opening timestamp.
     """
 
     if decision_timeframe not in frames:
@@ -88,8 +90,16 @@ def build_multitimeframe_feature_frame_v53(
     decision = built[decision_timeframe].copy()
     if "asset" not in decision.columns:
         decision["asset"] = "UNKNOWN"
-    decision = decision.rename(columns={"available_at": f"{decision_timeframe}_available_at"})
-    protected = {"timestamp", "bar_open_at", "bar_close_at", "available_at", "asset", "timeframe"}
+    decision_key = f"{decision_timeframe}_available_at"
+    decision = decision.rename(columns={"available_at": decision_key})
+    decision["decision_at"] = pd.to_datetime(decision[decision_key], utc=True, errors="raise")
+    if (decision["decision_at"] < pd.to_datetime(decision["bar_close_at"], utc=True)).any():
+        raise ValueError("decision_at precedes decision-bar close")
+
+    protected = {
+        "timestamp", "bar_open_at", "bar_close_at", "available_at",
+        "decision_at", "asset", "timeframe",
+    }
 
     for timeframe, high in built.items():
         if timeframe == decision_timeframe:
@@ -108,14 +118,18 @@ def build_multitimeframe_feature_frame_v53(
         decision = point_in_time_asof_join(
             decision,
             payload,
-            decision_time_col="timestamp",
+            decision_time_col="decision_at",
             available_time_col=availability_key,
             by="asset",
             feature_prefix=f"{timeframe}_",
         )
         assert_no_future_availability(
             decision,
-            decision_time_col="timestamp",
+            decision_time_col="decision_at",
             available_time_col=availability_key,
         )
+
+    decision = decision.sort_values("decision_at", kind="mergesort").reset_index(drop=True)
+    if decision["decision_at"].duplicated().any():
+        raise ValueError("duplicate decision_at timestamps")
     return decision
