@@ -7,6 +7,7 @@ on:
     paths:
       - "research_bot/overlap_arbitration_v51.py"
       - "research_bot/predictor_identity_v51.py"
+      - "scripts/__init__.py"
       - "scripts/freeze_v51_predictor_bundle.py"
       - "scripts/collect_v51_prospective_ohlcv.py"
       - "tests/test_overlap_arbitration_v51.py"
