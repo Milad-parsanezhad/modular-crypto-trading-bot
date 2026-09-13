@@ -2,13 +2,13 @@ from __future__ import annotations
 
 """Execution-integrity primitives for PAPER research.
 
-This module closes three failure seams without enabling LIVE trading:
+This module closes four failure seams without enabling LIVE trading:
 1) execution must use a fresh executable quote, never a stale candle close;
 2) cash, position and fill-ledger persistence must commit atomically;
-3) a repeated client_order_id after restart must be idempotent at the store.
+3) a repeated client_order_id after restart must be idempotent at the store;
+4) restart recovery must distinguish an observed signal from a settled order.
 """
 
-from dataclasses import asdict
 from datetime import datetime, timezone
 import json
 import math
@@ -65,7 +65,29 @@ def executable_reference_price(depth, side: OrderSide) -> float:
     return px
 
 
-def settle_fill(account: PaperAccount, position: PaperPosition, fill: ExecutionFill) -> tuple[PaperAccount, PaperPosition]:
+def settlement_exists(store, client_order_id: str) -> bool:
+    """Persistent idempotency check used after process restart."""
+    if isinstance(store, MemoryPaperStore):
+        return any(
+            str(x.get("client_order_id")) == str(client_order_id)
+            for x in store.recent_fills(limit=100_000)
+        )
+    if isinstance(store, PostgresPaperStore):
+        with store._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM paper_fills WHERE client_order_id=%s LIMIT 1",
+                    (str(client_order_id),),
+                )
+                return cur.fetchone() is not None
+    raise TypeError("store must support persistent v0.52 settlement lookup")
+
+
+def settle_fill(
+    account: PaperAccount,
+    position: PaperPosition,
+    fill: ExecutionFill,
+) -> tuple[PaperAccount, PaperPosition]:
     q = float(fill.filled_quantity)
     if not math.isfinite(q) or q < 0.0:
         raise ValueError("invalid filled quantity")
@@ -90,13 +112,25 @@ def settle_fill(account: PaperAccount, position: PaperPosition, fill: ExecutionF
             raise RuntimeError("PAPER_SELL_EXCEEDS_POSITION")
         proceeds = q * px - fee
         new_qty = max(0.0, float(position.quantity - q))
-        new_position = PaperPosition(position.symbol, new_qty, position.avg_price if new_qty > 0 else 0.0)
+        new_position = PaperPosition(
+            position.symbol,
+            new_qty,
+            position.avg_price if new_qty > 0 else 0.0,
+        )
         cash = float(account.cash + proceeds)
 
-    return PaperAccount(cash=cash, equity=account.equity, peak_equity=account.peak_equity), new_position
+    return (
+        PaperAccount(cash=cash, equity=account.equity, peak_equity=account.peak_equity),
+        new_position,
+    )
 
 
-def fill_row(fill: ExecutionFill, *, strategy_version: str, metadata: dict[str, Any]) -> dict[str, Any]:
+def fill_row(
+    fill: ExecutionFill,
+    *,
+    strategy_version: str,
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
     return {
         "timestamp": fill.timestamp.isoformat(),
         "client_order_id": fill.client_order_id,
@@ -113,10 +147,13 @@ def fill_row(fill: ExecutionFill, *, strategy_version: str, metadata: dict[str, 
     }
 
 
-def _memory_commit(store: MemoryPaperStore, symbol: str, fill: ExecutionFill, row: dict[str, Any]) -> PaperAccount:
-    # Database uniqueness is mirrored in memory so process-local tests exercise
-    # the same restart/idempotency invariant.
-    if any(str(x.get("client_order_id")) == fill.client_order_id for x in store.recent_fills(limit=100_000)):
+def _memory_commit(
+    store: MemoryPaperStore,
+    symbol: str,
+    fill: ExecutionFill,
+    row: dict[str, Any],
+) -> PaperAccount:
+    if settlement_exists(store, fill.client_order_id):
         raise DuplicateSettlementError(fill.client_order_id)
     account_before = store.get_account()
     position_before = store.get_position(symbol)
@@ -134,24 +171,43 @@ def _memory_commit(store: MemoryPaperStore, symbol: str, fill: ExecutionFill, ro
     return account_after
 
 
-def _postgres_commit(store: PostgresPaperStore, symbol: str, fill: ExecutionFill, row: dict[str, Any]) -> PaperAccount:
+def _postgres_commit(
+    store: PostgresPaperStore,
+    symbol: str,
+    fill: ExecutionFill,
+    row: dict[str, Any],
+) -> PaperAccount:
     now = datetime.now(timezone.utc)
-    with store._connect() as conn:  # one ACID transaction; context rolls back on exception
+    with store._connect() as conn:  # one ACID transaction; rollback on exception
         with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM paper_fills WHERE client_order_id=%s", (fill.client_order_id,))
+            cur.execute(
+                "SELECT 1 FROM paper_fills WHERE client_order_id=%s",
+                (fill.client_order_id,),
+            )
             if cur.fetchone() is not None:
                 raise DuplicateSettlementError(fill.client_order_id)
 
-            cur.execute("SELECT cash,equity,peak_equity FROM paper_account WHERE id=1 FOR UPDATE")
+            cur.execute(
+                "SELECT cash,equity,peak_equity FROM paper_account WHERE id=1 FOR UPDATE"
+            )
             a = cur.fetchone()
             if a is None:
                 raise RuntimeError("paper_account row missing")
             account_before = PaperAccount(float(a[0]), float(a[1]), float(a[2]))
 
-            cur.execute("SELECT quantity,avg_price FROM paper_positions WHERE symbol=%s FOR UPDATE", (symbol,))
+            cur.execute(
+                "SELECT quantity,avg_price FROM paper_positions WHERE symbol=%s FOR UPDATE",
+                (symbol,),
+            )
             p = cur.fetchone()
-            position_before = PaperPosition(symbol, 0.0, 0.0) if p is None else PaperPosition(symbol, float(p[0]), float(p[1]))
-            account_after, position_after = settle_fill(account_before, position_before, fill)
+            position_before = (
+                PaperPosition(symbol, 0.0, 0.0)
+                if p is None
+                else PaperPosition(symbol, float(p[0]), float(p[1]))
+            )
+            account_after, position_after = settle_fill(
+                account_before, position_before, fill
+            )
 
             if abs(position_after.quantity) < 1e-15:
                 cur.execute("DELETE FROM paper_positions WHERE symbol=%s", (symbol,))
@@ -161,15 +217,14 @@ def _postgres_commit(store: PostgresPaperStore, symbol: str, fill: ExecutionFill
                     INSERT INTO paper_positions(symbol,quantity,avg_price,updated_at)
                     VALUES (%s,%s,%s,%s)
                     ON CONFLICT (symbol) DO UPDATE SET
-                      quantity=EXCLUDED.quantity,avg_price=EXCLUDED.avg_price,updated_at=EXCLUDED.updated_at
+                      quantity=EXCLUDED.quantity,avg_price=EXCLUDED.avg_price,
+                      updated_at=EXCLUDED.updated_at
                     """,
                     (symbol, position_after.quantity, position_after.avg_price, now),
                 )
 
             cur.execute(
-                """
-                UPDATE paper_account SET cash=%s,updated_at=%s WHERE id=1
-                """,
+                "UPDATE paper_account SET cash=%s,updated_at=%s WHERE id=1",
                 (account_after.cash, now),
             )
             cur.execute(
@@ -180,9 +235,17 @@ def _postgres_commit(store: PostgresPaperStore, symbol: str, fill: ExecutionFill
                 ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
                 """,
                 (
-                    store._dt(row["timestamp"]), row["client_order_id"], row["symbol"], row["side"],
-                    row["requested_quantity"], row["filled_quantity"], row["fill_price"],
-                    row["fee_paid"], row["slippage_paid"], row["status"], row["strategy_version"],
+                    store._dt(row["timestamp"]),
+                    row["client_order_id"],
+                    row["symbol"],
+                    row["side"],
+                    row["requested_quantity"],
+                    row["filled_quantity"],
+                    row["fill_price"],
+                    row["fee_paid"],
+                    row["slippage_paid"],
+                    row["status"],
+                    row["strategy_version"],
                     json.dumps(row.get("metadata", {})),
                 ),
             )
