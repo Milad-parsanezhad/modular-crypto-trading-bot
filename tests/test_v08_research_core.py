@@ -13,6 +13,7 @@ from research_bot.execution import (
     ExecutionPolicy,
     ExecutionRequest,
     OrderSide,
+    OrderType,
     PaperExecutionEngine,
 )
 from research_bot.ichimoku_advanced import add_ichimoku_state, detect_kumo_triangle_breakout
@@ -200,6 +201,37 @@ def test_point_in_time_join_never_uses_future_release():
     assert_no_future_availability(merged)
 
 
+def test_point_in_time_join_handles_interleaved_multi_asset_rows_and_preserves_order():
+    decisions = pd.DataFrame(
+        {
+            "row_id": [0, 1, 2, 3],
+            "asset": ["BTC", "ETH", "BTC", "ETH"],
+            "timestamp": [
+                "2026-01-01T10:00:00Z",
+                "2026-01-01T09:00:00Z",
+                "2026-01-01T12:00:00Z",
+                "2026-01-01T11:00:00Z",
+            ],
+        }
+    )
+    features = pd.DataFrame(
+        {
+            "asset": ["BTC", "ETH", "BTC", "ETH"],
+            "available_at": [
+                "2026-01-01T09:00:00Z",
+                "2026-01-01T08:00:00Z",
+                "2026-01-01T11:00:00Z",
+                "2026-01-01T10:00:00Z",
+            ],
+            "score": [1.0, 3.0, 2.0, 4.0],
+        }
+    )
+    merged = point_in_time_asof_join(decisions, features)
+    assert merged["row_id"].tolist() == [0, 1, 2, 3]
+    assert merged["score"].tolist() == [1.0, 3.0, 2.0, 4.0]
+    assert_no_future_availability(merged)
+
+
 def test_ichimoku_feature_path_has_no_chikou_and_is_point_in_time():
     data = _ohlcv()
     out = add_ichimoku_state(data)
@@ -225,3 +257,48 @@ def test_backtest_reports_tail_risk_and_explicit_costs():
     assert "profit_factor_periods" in metrics
     assert metrics["total_explicit_cost"] > 0
     assert metrics["trade_events"] > 0
+
+
+def test_risk_engine_rejects_non_finite_snapshot():
+    decision = RiskEngine().evaluate(
+        RiskSnapshot(
+            equity=float("nan"),
+            peak_equity=10_000.0,
+            gross_exposure=0.0,
+            asset_weight=0.0,
+            turnover=0.0,
+            spread_bps=4.0,
+            slippage_bps=2.0,
+        )
+    )
+    assert decision.approved is False
+    assert decision.kill_switch is True
+    assert "INVALID_RISK_SNAPSHOT" in decision.reasons
+
+
+def test_execution_rejects_non_finite_order_values():
+    engine = PaperExecutionEngine()
+    request = ExecutionRequest(
+        client_order_id="non-finite",
+        symbol="BTC/USDT",
+        side=OrderSide.BUY,
+        quantity=float("nan"),
+        reference_price=100_000.0,
+    )
+    with pytest.raises(ValueError, match="finite"):
+        engine.execute(request)
+
+
+def test_limit_order_is_rejected_instead_of_receiving_a_market_fill():
+    engine = PaperExecutionEngine()
+    request = ExecutionRequest(
+        client_order_id="unsupported-limit",
+        symbol="BTC/USDT",
+        side=OrderSide.BUY,
+        quantity=0.01,
+        reference_price=100_000.0,
+        order_type=OrderType.LIMIT,
+        limit_price=99_000.0,
+    )
+    with pytest.raises(RuntimeError, match="LIMIT_ORDER_SIMULATION_UNSUPPORTED"):
+        engine.execute(request)
