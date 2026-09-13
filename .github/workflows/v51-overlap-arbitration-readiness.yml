@@ -7,6 +7,7 @@ on:
     paths:
       - "research_bot/overlap_arbitration_v51.py"
       - "research_bot/predictor_identity_v51.py"
+      - "research_bot/prospective_collector_v51.py"
       - "scripts/__init__.py"
       - "scripts/freeze_v51_predictor_bundle.py"
       - "scripts/collect_v51_prospective_ohlcv.py"
@@ -125,19 +126,24 @@ jobs:
               ARBITRATION_POLICY_V51,
           )
           from research_bot.predictor_identity_v51 import V51_REPAIRED_PROSPECTIVE_START
-          from scripts.collect_v51_prospective_ohlcv import (
+          from research_bot.prospective_collector_v51 import (
               ALLOWED_VENUES_V51 as COLLECTOR_VENUES,
+              PREDICTOR_IDENTITY_AMENDMENT_COMMIT_V51,
+              PREDICTOR_IDENTITY_POLICY_V51,
               PROSPECTIVE_START_V51 as COLLECTOR_START,
           )
           assert ARBITRATION_POLICY_V51 == "SIMULTANEOUS_MAX_EXPECTED_R_NO_PREEMPTION"
           assert set(ALLOWED_VENUES_V51) == {"coinex", "okx", "kucoin"}
           assert tuple(COLLECTOR_VENUES) == ("coinex", "okx", "kucoin")
           assert "kraken" not in ALLOWED_VENUES_V51
+          assert PREDICTOR_IDENTITY_AMENDMENT_COMMIT_V51 == "4838c0d98c408d358929b0767676a5ac024bd8dd"
+          assert PREDICTOR_IDENTITY_POLICY_V51 == "V47_C1_LATEST_CANONICAL_FOLD_PER_ASSET"
           assert PROSPECTIVE_START_V51 == pd.Timestamp(V51_REPAIRED_PROSPECTIVE_START)
           assert PROSPECTIVE_START_V51 == COLLECTOR_START == pd.Timestamp("2026-09-13T12:00:00Z")
           print({
               "policy": ARBITRATION_POLICY_V51,
               "prospective_start": str(PROSPECTIVE_START_V51),
+              "identity_amendment_commit": PREDICTOR_IDENTITY_AMENDMENT_COMMIT_V51,
               "kraken_touched": False,
               "paper_execution": False,
               "live_execution": False,
