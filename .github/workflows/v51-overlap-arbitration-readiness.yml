@@ -6,10 +6,14 @@ on:
       - research/v51-overlap-arbitration-empirical
     paths:
       - "research_bot/overlap_arbitration_v51.py"
+      - "research_bot/predictor_identity_v51.py"
+      - "scripts/freeze_v51_predictor_bundle.py"
       - "scripts/collect_v51_prospective_ohlcv.py"
       - "tests/test_overlap_arbitration_v51.py"
+      - "tests/test_v51_predictor_identity_hardening.py"
       - "tests/test_v51_prospective_collector.py"
       - "docs/V51_OVERLAP_CONFLICT_ARBITRATION_PREREGISTRATION.md"
+      - "docs/V51_PREDICTOR_IDENTITY_AMENDMENT_2026-09-13.md"
       - "docs/V51_OVERLAP_ARBITRATION_RESEARCH_2026-09-13.md"
       - ".github/workflows/v51-overlap-arbitration-readiness.yml"
   workflow_dispatch:
@@ -24,10 +28,13 @@ concurrency:
 env:
   V51_PREREG_HEAD: d8ee4576aaf55750dd5910cc0d3b2efcbba3f5b2
   V51_CALENDAR_HEAD: 6a8fa49de2d1befa9c17049aa61e13da20a028eb
+  V51_IDENTITY_AMENDMENT_HEAD: 4838c0d98c408d358929b0767676a5ac024bd8dd
   V50_RESULT_HEAD: 776f42664f3b01f9deac235fc611c5d84746d74f
   V47_SCIENTIFIC_HEAD: 802b0cde38549617589b6a4a313949361dd9425c
   V51_PREREG_EPOCH: "1789274968"
   V51_CALENDAR_EPOCH: "1789275171"
+  V51_IDENTITY_AMENDMENT_EPOCH: "1789287923"
+  V51_REPAIRED_START_EPOCH: "1789300800"
 
 jobs:
   readiness:
@@ -40,7 +47,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.sha }}
 
-      - name: Verify prospective lineage and frozen design
+      - name: Verify prospective lineage and repaired identity freeze
         shell: bash
         run: |
           set -euo pipefail
@@ -48,14 +55,18 @@ jobs:
           git merge-base --is-ancestor "$V50_RESULT_HEAD" HEAD
           git merge-base --is-ancestor "$V51_PREREG_HEAD" HEAD
           git merge-base --is-ancestor "$V51_CALENDAR_HEAD" HEAD
-          # Compare immutable instants numerically, independent of ISO timezone formatting.
+          git merge-base --is-ancestor "$V51_IDENTITY_AMENDMENT_HEAD" HEAD
           test "$(git show -s --format=%ct "$V51_PREREG_HEAD")" = "$V51_PREREG_EPOCH"
           test "$(git show -s --format=%ct "$V51_CALENDAR_HEAD")" = "$V51_CALENDAR_EPOCH"
-          # No post-freeze edit to the frozen policy/calendar files is permitted.
-          git diff --exit-code "$V51_CALENDAR_HEAD" -- \
-            docs/V51_OVERLAP_CONFLICT_ARBITRATION_PREREGISTRATION.md \
-            research_bot/overlap_arbitration_v51.py \
-            tests/test_overlap_arbitration_v51.py
+          test "$(git show -s --format=%ct "$V51_IDENTITY_AMENDMENT_HEAD")" = "$V51_IDENTITY_AMENDMENT_EPOCH"
+          test "$V51_IDENTITY_AMENDMENT_EPOCH" -lt "$V51_REPAIRED_START_EPOCH"
+          test ! -e docs/V51_RESULTS_2026-09-13.md
+          # Original preregistration text itself remains immutable.
+          test "$(git rev-parse HEAD:docs/V51_OVERLAP_CONFLICT_ARBITRATION_PREREGISTRATION.md)" = \
+               "$(git rev-parse "$V51_CALENDAR_HEAD":docs/V51_OVERLAP_CONFLICT_ARBITRATION_PREREGISTRATION.md)"
+          grep -q 'V51_PRODUCTION_PREDICTOR = V47_C1_LATEST_CANONICAL_FOLD_PER_ASSET' \
+            docs/V51_PREDICTOR_IDENTITY_AMENDMENT_2026-09-13.md
+          grep -q '2026-09-13T12:00:00Z' docs/V51_PREDICTOR_IDENTITY_AMENDMENT_2026-09-13.md
 
       - name: Verify inherited v0.47 scientific pipeline unchanged
         shell: bash
@@ -90,6 +101,9 @@ jobs:
       - name: Run frozen v0.51 causal arbitration tests
         run: pytest -q tests/test_overlap_arbitration_v51.py
 
+      - name: Run v0.51 predictor identity hardening tests
+        run: pytest -q tests/test_v51_predictor_identity_hardening.py
+
       - name: Run prospective collector invariants
         run: pytest -q tests/test_v51_prospective_collector.py
 
@@ -100,14 +114,16 @@ jobs:
             tests/test_probability_calibration_v47.py \
             tests/test_economic_state_v46.py
 
-      - name: Verify research-only safety contract
+      - name: Verify research-only safety and clock contract
         run: |
           python - <<'PY'
+          import pandas as pd
           from research_bot.overlap_arbitration_v51 import (
               ALLOWED_VENUES_V51,
               PROSPECTIVE_START_V51,
               ARBITRATION_POLICY_V51,
           )
+          from research_bot.predictor_identity_v51 import V51_REPAIRED_PROSPECTIVE_START
           from scripts.collect_v51_prospective_ohlcv import (
               ALLOWED_VENUES_V51 as COLLECTOR_VENUES,
               PROSPECTIVE_START_V51 as COLLECTOR_START,
@@ -116,7 +132,8 @@ jobs:
           assert set(ALLOWED_VENUES_V51) == {"coinex", "okx", "kucoin"}
           assert tuple(COLLECTOR_VENUES) == ("coinex", "okx", "kucoin")
           assert "kraken" not in ALLOWED_VENUES_V51
-          assert PROSPECTIVE_START_V51 == COLLECTOR_START
+          assert PROSPECTIVE_START_V51 == pd.Timestamp(V51_REPAIRED_PROSPECTIVE_START)
+          assert PROSPECTIVE_START_V51 == COLLECTOR_START == pd.Timestamp("2026-09-13T12:00:00Z")
           print({
               "policy": ARBITRATION_POLICY_V51,
               "prospective_start": str(PROSPECTIVE_START_V51),
