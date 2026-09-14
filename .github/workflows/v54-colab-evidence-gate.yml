@@ -1,0 +1,99 @@
+name: v54-colab-evidence-gate
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/run_v54_colab_operational.py'
+      - 'scripts/register_v54_colab_evidence.py'
+      - 'tests/test_register_v54_colab_evidence.py'
+      - 'evidence/v54/colab/**'
+      - '.github/workflows/v54-colab-evidence-gate.yml'
+  push:
+    branches:
+      - 'evidence/v54-colab-operational'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evidence-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      LIVE_EXECUTION: 'false'
+      PAPER_EXECUTION: 'false'
+      BOT_FORWARD_PAPER_ENABLED: 'false'
+      BOT_PAPER_EXECUTION_ENABLED: 'false'
+      TRADING_EXECUTION: 'false'
+      EXECUTION_MODE: 'RESEARCH_ONLY'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      - name: Compile evidence tooling
+        run: |
+          python -m compileall -q             scripts/run_v54_colab_operational.py             scripts/register_v54_colab_evidence.py             tests/test_register_v54_colab_evidence.py
+
+      - name: Run evidence regression tests
+        run: |
+          pytest -q tests/test_register_v54_colab_evidence.py
+
+      - name: Validate pinned source identity
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          runner = Path('scripts/run_v54_colab_operational.py').read_text()
+          registrar = Path('scripts/register_v54_colab_evidence.py').read_text()
+
+          bundle_hash = (
+              '4b90656f9501d22381ef1e8d3e8c0ac'
+              '3dbe3f295ef5fe15ba1ca7dca5ec4faee'
+          )
+          source_hash = (
+              '929eceaff3ae4286183acadb55cd0964d'
+              'eaf674d325783afacfed70e63d67db5'
+          )
+
+          assert bundle_hash in runner
+          assert bundle_hash in registrar
+          assert source_hash in registrar
+          assert 'LIVE_EXECUTION' in runner
+          assert 'PAPER_EXECUTION' in runner
+          assert 'EXPECTED_BUNDLE_SHA256' in runner
+          assert 'SECRET_PATTERNS' in registrar
+          print('Pinned identity and fail-closed evidence contract verified')
+          PY
+
+      - name: Scan committed evidence for credential material
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from scripts.register_v54_colab_evidence import SECRET_PATTERNS
+
+          failures = []
+          for path in Path('evidence/v54/colab').rglob('*'):
+              if not path.is_file():
+                  continue
+              text = path.read_text(encoding='utf-8', errors='replace')
+              if any(pattern.search(text) for pattern in SECRET_PATTERNS):
+                  failures.append(str(path))
+
+          if failures:
+              raise SystemExit('Potential secrets detected: ' + ', '.join(failures))
+          print('No credential material detected in committed v0.54 evidence')
+          PY
+
+      - name: Full repository regression suite
+        run: pytest -q
