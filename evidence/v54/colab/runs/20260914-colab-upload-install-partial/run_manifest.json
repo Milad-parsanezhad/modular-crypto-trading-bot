@@ -3,7 +3,7 @@
   "run_id": "20260914T-colab-upload-install-partial",
   "recorded_at": "2026-09-14T00:00:00Z",
   "classification": "ENGINEERING_EVIDENCE_ONLY",
-  "status": "RUN_INCOMPLETE",
+  "status": "DEPENDENCIES_INSTALLED_AWAITING_TESTS",
   "terminal_result_observed": false,
   "source": {
     "branch": "research/v54-feature-audit-oos",
@@ -19,10 +19,10 @@
     "package_version": "1.0.0rc3"
   },
   "observations": [
-    "Correct source bundle upload completed.",
+    "Correct source bundle upload completed despite a stale browser-widget notice.",
     "Observed source bundle SHA-256 matched the canonical transport digest.",
-    "Editable build completed.",
-    "Dependency installation reached package installation output.",
+    "Editable wheel build completed successfully.",
+    "Dependency installation completed successfully, including modular-crypto-research-bot 1.0.0rc3.",
     "No complete pytest summary was supplied.",
     "No terminal workflow status or result archive was supplied."
   ],
@@ -33,5 +33,5 @@
     "kraken_sealed": true,
     "scientific_promotion_authorized": false
   },
-  "scientific_interpretation": "No scientific or economic conclusion is permitted from this partial transcript."
+  "scientific_interpretation": "Engineering installation evidence only. No scientific or economic conclusion is permitted until terminal tests and workflow artifacts are received."
 }
