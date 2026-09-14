@@ -139,7 +139,18 @@ def fetch_bitpin_markets(*, request_fn: RequestFn = _request_json) -> pd.DataFra
     return df
 
 
-def fetch_bitpin_tickers(*, request_fn: RequestFn = _request_json) -> pd.DataFrame:
+def fetch_bitpin_tickers(
+    *,
+    strict: bool = False,
+    request_fn: RequestFn = _request_json,
+) -> pd.DataFrame:
+    """Fetch public tickers, retaining only rows with executable positive prices.
+
+    Bitpin's provider-wide ticker feed can contain inactive/stale markets with a
+    zero or otherwise unusable price. Those rows are quarantined rather than
+    allowed to poison every valid market. Set ``strict=True`` for an audit that
+    rejects the whole payload when any invalid-price row exists.
+    """
     endpoint = "/mkt/tickers/"
     rows = _as_rows(request_fn(endpoint, 20), endpoint=endpoint)
     if not rows:
@@ -152,11 +163,49 @@ def fetch_bitpin_tickers(*, request_fn: RequestFn = _request_json) -> pd.DataFra
     for col in ("price", "low", "high", "daily_change_price"):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-    if (~df["price"].map(lambda x: math.isfinite(float(x)) and float(x) > 0 if pd.notna(x) else False)).any():
+
+    def valid_price(x: Any) -> bool:
+        if pd.isna(x):
+            return False
+        try:
+            value = float(x)
+        except (TypeError, ValueError):
+            return False
+        return math.isfinite(value) and value > 0.0
+
+    valid_mask = df["price"].map(valid_price)
+    invalid_count = int((~valid_mask).sum())
+    if strict and invalid_count:
         raise BitpinAPIError("Bitpin ticker response contains invalid prices")
+
+    df = df.loc[valid_mask].copy().reset_index(drop=True)
+    if df.empty:
+        raise BitpinAPIError("Bitpin ticker response has no valid positive prices")
+    df.attrs["invalid_price_rows"] = invalid_count
+    df.attrs["raw_ticker_rows"] = int(len(rows))
+
     if "timestamp" in df.columns:
         df["timestamp"] = df["timestamp"].map(_timestamp_utc)
     return df
+
+
+def fetch_bitpin_ticker(
+    symbol: str = "BTC/USDT",
+    *,
+    request_fn: RequestFn = _request_json,
+) -> dict[str, Any]:
+    """Return one exact market ticker and fail closed if that market is unusable."""
+    market = _to_market(symbol)
+    df = fetch_bitpin_tickers(request_fn=request_fn)
+    match = df.loc[df["symbol"] == market]
+    if match.empty:
+        raise BitpinAPIError(f"No valid Bitpin ticker for {market}")
+    if len(match) != 1:
+        raise BitpinAPIError(f"Duplicate Bitpin ticker rows for {market}")
+    row = match.iloc[0].to_dict()
+    row["invalid_price_rows_in_feed"] = int(df.attrs.get("invalid_price_rows", 0))
+    row["raw_ticker_rows_in_feed"] = int(df.attrs.get("raw_ticker_rows", len(df)))
+    return row
 
 
 def _level_pair(level: Any, *, side: str) -> tuple[float, float]:
@@ -232,6 +281,8 @@ def fetch_bitpin_recent_trades(
     for col in ("price", "base_amount", "quote_amount", "commission"):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
+    if df["price"].isna().any() or (~df["price"].map(lambda x: math.isfinite(float(x)) and float(x) > 0.0)).any():
+        raise BitpinAPIError("Bitpin trade response contains invalid prices")
     ts_col = "created_at" if "created_at" in df.columns else "timestamp" if "timestamp" in df.columns else None
     if ts_col is not None:
         df["timestamp"] = df[ts_col].map(_timestamp_utc)
