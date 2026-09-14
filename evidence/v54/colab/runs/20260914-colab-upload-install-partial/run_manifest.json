@@ -1,0 +1,37 @@
+{
+  "schema_version": "v54-colab-evidence-1",
+  "run_id": "20260914T-colab-upload-install-partial",
+  "recorded_at": "2026-09-14T00:00:00Z",
+  "classification": "ENGINEERING_EVIDENCE_ONLY",
+  "status": "DEPENDENCIES_INSTALLED_AWAITING_TESTS",
+  "terminal_result_observed": false,
+  "source": {
+    "branch": "research/v54-feature-audit-oos",
+    "source_fingerprint": "929eceaff3ae4286183acadb55cd0964deaf674d325783afacfed70e63d67db5",
+    "source_bundle_sha256": "4b90656f9501d22381ef1e8d3e8c0ac3dbe3f295ef5fe15ba1ca7dca5ec4faee",
+    "bundle_size_bytes": 348224
+  },
+  "environment": {
+    "platform": "Google Colab",
+    "python_observed": "3.13",
+    "installer": "/usr/bin/python3 -m pip",
+    "package": "modular-crypto-research-bot",
+    "package_version": "1.0.0rc3"
+  },
+  "observations": [
+    "Correct source bundle upload completed despite a stale browser-widget notice.",
+    "Observed source bundle SHA-256 matched the canonical transport digest.",
+    "Editable wheel build completed successfully.",
+    "Dependency installation completed successfully, including modular-crypto-research-bot 1.0.0rc3.",
+    "No complete pytest summary was supplied.",
+    "No terminal workflow status or result archive was supplied."
+  ],
+  "safety": {
+    "research_only": true,
+    "paper_execution": false,
+    "live_execution": false,
+    "kraken_sealed": true,
+    "scientific_promotion_authorized": false
+  },
+  "scientific_interpretation": "Engineering installation evidence only. No scientific or economic conclusion is permitted until terminal tests and workflow artifacts are received."
+}
